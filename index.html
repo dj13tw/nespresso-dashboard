@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NESPRESSO 輿情分析儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:#f8f9fb; color:#1a1a2e; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color:#fff; padding:24px 32px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  .header-left h1 { font-size:1.5rem; font-weight:700; letter-spacing:0.5px; }
+  .header-left h1 span { color:#e8c46a; }
+  .header-left p { font-size:0.8rem; opacity:0.7; margin-top:4px; }
+  .header-right { font-size:0.78rem; opacity:0.75; text-align:right; line-height:1.6; }
+
+  /* Filter Bar */
+  .filter-bar {
+    background:#fff; padding:14px 32px;
+    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    border-bottom:1px solid #e9ecef; position:sticky; top:0; z-index:100;
+    box-shadow:0 2px 8px rgba(0,0,0,0.06);
+  }
+  .filter-label { font-size:0.75rem; font-weight:600; color:#6c757d; margin-right:4px; }
+  .filter-btn {
+    padding:5px 14px; border-radius:20px; border:1.5px solid #dee2e6;
+    background:#fff; font-size:0.78rem; cursor:pointer; transition:all .2s;
+    color:#495057;
+  }
+  .filter-btn:hover { border-color:#0f3460; color:#0f3460; }
+  .filter-btn.active { background:#0f3460; border-color:#0f3460; color:#fff; font-weight:600; }
+  .filter-divider { width:1px; height:20px; background:#dee2e6; margin:0 4px; }
+
+  /* KPI Cards */
+  .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; padding:24px 32px 8px; }
+  .kpi-card {
+    background:#fff; border-radius:12px; padding:20px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.06); border-left:4px solid #e9ecef;
+    transition:transform .2s;
+  }
+  .kpi-card:hover { transform:translateY(-2px); }
+  .kpi-card.total { border-left-color:#0f3460; }
+  .kpi-card.pos { border-left-color:#16a34a; }
+  .kpi-card.neg { border-left-color:#dc2626; }
+  .kpi-card.neu { border-left-color:#d97706; }
+  .kpi-card.threads { border-left-color:#000; }
+  .kpi-value { font-size:2rem; font-weight:800; color:#1a1a2e; }
+  .kpi-label { font-size:0.78rem; color:#6c757d; margin-top:4px; }
+  .kpi-sub { font-size:0.72rem; color:#adb5bd; margin-top:2px; }
+
+  /* Charts */
+  .charts-row { display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; padding:8px 32px; }
+  @media(max-width:900px){ .charts-row { grid-template-columns:1fr; } }
+  .chart-card {
+    background:#fff; border-radius:12px; padding:20px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.06);
+  }
+  .chart-card h3 { font-size:0.85rem; font-weight:700; color:#495057; margin-bottom:16px; }
+
+  /* Timeline */
+  .section { padding:8px 32px; }
+  .section-title { font-size:1rem; font-weight:700; color:#1a1a2e; margin-bottom:16px; }
+  .timeline { position:relative; padding-left:24px; }
+  .timeline::before { content:''; position:absolute; left:6px; top:0; bottom:0; width:2px; background:#e9ecef; }
+  .tl-item { position:relative; margin-bottom:20px; }
+  .tl-dot {
+    position:absolute; left:-21px; top:4px;
+    width:12px; height:12px; border-radius:50%;
+    background:#0f3460; border:2px solid #fff;
+    box-shadow:0 0 0 2px #0f3460;
+  }
+  .tl-dot.hot { background:#dc2626; box-shadow:0 0 0 2px #dc2626; }
+  .tl-date { font-size:0.72rem; font-weight:700; color:#adb5bd; margin-bottom:3px; }
+  .tl-title { font-size:0.85rem; font-weight:600; color:#1a1a2e; }
+  .tl-desc { font-size:0.78rem; color:#6c757d; margin-top:3px; line-height:1.5; }
+
+  /* Posts Table */
+  .posts-grid { display:flex; flex-direction:column; gap:10px; }
+  .post-item {
+    background:#fff; border-radius:10px; padding:16px;
+    box-shadow:0 1px 8px rgba(0,0,0,0.05);
+    display:grid; grid-template-columns:auto auto 1fr auto;
+    gap:12px; align-items:start; transition:box-shadow .2s;
+  }
+  .post-item:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+  .post-item.hidden { display:none; }
+  .post-platform {
+    font-size:0.7rem; font-weight:700; padding:3px 8px; border-radius:4px;
+    white-space:nowrap; align-self:start;
+  }
+  .platform-ptt { background:#16a34a; color:#fff; }
+  .platform-dcard { background:#86198f; color:#fff; }
+  .platform-threads { background:#111; color:#fff; }
+  .platform-news { background:#0369a1; color:#fff; }
+  .post-sentiment { font-size:0.85rem; align-self:start; }
+  .post-content .post-title {
+    font-size:0.88rem; font-weight:600; color:#1a1a2e;
+    cursor:pointer; text-decoration:none;
+  }
+  .post-content .post-title:hover { color:#0f3460; text-decoration:underline; }
+  .post-content .post-date { font-size:0.72rem; color:#adb5bd; margin-bottom:4px; }
+  .post-content .post-summary { font-size:0.78rem; color:#6c757d; line-height:1.5; }
+  .post-meta { text-align:right; white-space:nowrap; }
+  .post-meta .meta-item { font-size:0.72rem; color:#adb5bd; }
+
+  /* Insight Box */
+  .insight-box {
+    background: linear-gradient(135deg,#f0f7ff,#e8f4fd);
+    border:1px solid #bfdbfe; border-radius:12px;
+    padding:20px; margin:8px 32px;
+  }
+  .insight-box h3 { font-size:0.9rem; font-weight:700; color:#1e40af; margin-bottom:12px; }
+  .insight-item { font-size:0.82rem; color:#374151; line-height:1.7; margin-bottom:4px; }
+  .insight-item strong { color:#1e40af; }
+
+  /* Footer */
+  .footer {
+    background:#1a1a2e; color:#6c757d; font-size:0.72rem;
+    padding:16px 32px; margin-top:24px; text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <h1>☕ <span>NESPRESSO</span> 輿情分析儀表板</h1>
+    <p>監測平台：Threads・PTT・Dcard・新聞媒體　｜　關鍵字：nespresso、膠囊咖啡機、奶泡機</p>
+  </div>
+  <div class="header-right">
+    📅 資料更新：2026年4月19日<br>
+    監測區間：2025年11月 ─ 2026年4月
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+  <span class="filter-label">平台：</span>
+  <button class="filter-btn active" onclick="filterPosts('platform','all',this)">全部</button>
+  <button class="filter-btn" onclick="filterPosts('platform','threads',this)">Threads</button>
+  <button class="filter-btn" onclick="filterPosts('platform','ptt',this)">PTT</button>
+  <button class="filter-btn" onclick="filterPosts('platform','dcard',this)">Dcard</button>
+  <button class="filter-btn" onclick="filterPosts('platform','news',this)">新聞媒體</button>
+  <div class="filter-divider"></div>
+  <span class="filter-label">情感：</span>
+  <button class="filter-btn active" onclick="filterPosts('sentiment','all',this)">全部</button>
+  <button class="filter-btn" onclick="filterPosts('sentiment','pos',this)">✅ 正面</button>
+  <button class="filter-btn" onclick="filterPosts('sentiment','neg',this)">❌ 負面</button>
+  <button class="filter-btn" onclick="filterPosts('sentiment','neu',this)">🟡 中立</button>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-row">
+  <div class="kpi-card total">
+    <div class="kpi-value">20</div>
+    <div class="kpi-label">總聲量</div>
+    <div class="kpi-sub">近6個月收集文章數</div>
+  </div>
+  <div class="kpi-card pos">
+    <div class="kpi-value">8</div>
+    <div class="kpi-label">✅ 正面</div>
+    <div class="kpi-sub">佔比 40.0%</div>
+  </div>
+  <div class="kpi-card neg">
+    <div class="kpi-value">4</div>
+    <div class="kpi-label">❌ 負面</div>
+    <div class="kpi-sub">佔比 20.0%</div>
+  </div>
+  <div class="kpi-card neu">
+    <div class="kpi-value">8</div>
+    <div class="kpi-label">🟡 中立</div>
+    <div class="kpi-sub">佔比 40.0%</div>
+  </div>
+  <div class="kpi-card threads">
+    <div class="kpi-value">5,200+</div>
+    <div class="kpi-label">Threads 總互動</div>
+    <div class="kpi-sub">讚數 + 留言 + 分享</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="charts-row">
+  <div class="chart-card">
+    <h3>📊 近 6 個月聲量趨勢（正面 / 負面 / 中立）</h3>
+    <canvas id="trendChart" height="120"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>🎯 整體情感分佈</h3>
+    <canvas id="pieChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>📱 各平台聲量分佈</h3>
+    <canvas id="platformChart"></canvas>
+  </div>
+</div>
+
+<!-- Insight Box -->
+<div class="insight-box">
+  <h3>🔍 本期輿情洞察摘要</h3>
+  <div class="insight-item">・<strong>主要正面驅動力：</strong>春節禮盒行銷成功、Aeroccino 奶泡機高評價、Vertuo 系列濃郁口感受好評、永續回收行動加分品牌形象。</div>
+  <div class="insight-item">・<strong>主要負面議題：</strong>Vertuo 系統膠囊耗材成本高、不支援第三方膠囊、口感無法客製化，引發部分用戶流失疑慮。</div>
+  <div class="insight-item">・<strong>熱議關鍵字：</strong>「高級垃圾」（買錯系統）、「膠囊成本」、「Aeroccino奶泡」、「Essenza Mini」、「永續回收」</div>
+  <div class="insight-item">・<strong>品牌機會點：</strong>奶泡機搭售、環保訴求、Threads 生活感內容仍有大量成長空間。</div>
+</div>
+
+<!-- Timeline -->
+<div class="section">
+  <div class="section-title">⏰ 近 6 個月重大事件時間軸</div>
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-date">2025年11月</div>
+      <div class="tl-title">Nespresso 2030 永續報告書發布：台灣膠囊回收率超越全球平均</div>
+      <div class="tl-desc">foodnext 等媒體大篇幅報導，強調台灣與台大合作咖啡渣有機農業研究，顯著提升品牌ESG形象，正面聲量明顯上升。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-date">2025年12月</div>
+      <div class="tl-title">PTT Coffee 版：「是否該入手膠囊咖啡機」引發系統選擇大討論</div>
+      <div class="tl-desc">用戶討論 Nespresso Original vs. Vertuo 系統差異，多位老手提醒 Vertuo 膠囊只能買原廠、長期成本較高，中立偏負評居多。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-date">2026年1月</div>
+      <div class="tl-title">春節限定「福滿花開金運咖啡禮盒」上市，100% 中獎引爆送禮話題</div>
+      <div class="tl-desc">經濟日報、bella.tw 等媒體報導春節行銷，刮刮樂機制創造高話題性，Threads 上出現多則曬禮盒貼文，正面情緒顯著。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-date">2026年2月</div>
+      <div class="tl-title">Dcard 「買錯真的變高級垃圾」爆文持續發酵</div>
+      <div class="tl-desc">@mikoya_1327 的 2026 膠囊咖啡機推薦文以「高級垃圾」為標題引發共鳴，點名 Vertuo 系統封閉性為主要購買風險，形成負面口碑擴散。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-date">2026年3月</div>
+      <div class="tl-title">Dcard 奶泡機評比：Aeroccino 4 蟬聯推薦榜首</div>
+      <div class="tl-desc">多篇奶泡機比較文均將 Aeroccino 4 列為首選，強調不鏽鋼質感、靜音運轉、2年保固，帶動奶泡機相關關鍵字搜尋量上升。</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot hot"></div>
+      <div class="tl-date">2026年4月 🔥</div>
+      <div class="tl-title">2026 年最新推薦評比集中爆發，Essenza Mini 蟬聯入門首選</div>
+      <div class="tl-desc">多篇 Dcard / vocus 推薦文同期刊出，Essenza Mini 因「小台不佔空間、出杯品質穩定」持續獲推，本月為近6個月最高聲量月份。</div>
+    </div>
+  </div>
+</div>
+
+<!-- Posts -->
+<div class="section">
+  <div class="section-title">📋 代表性貼文一覽</div>
+  <div class="posts-grid">
+
+    <div class="post-item" data-platform="news" data-sentiment="pos">
+      <span class="post-platform platform-news">新聞媒體</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2025-11-15</div>
+        <a class="post-title" href="https://www.foodnext.net/news/industry/paper/5593805070" target="_blank">Nespresso公布2030永續報告書：台灣膠囊回收率超越全球平均</a>
+        <div class="post-summary">報導 Nespresso 台灣與台大合作咖啡渣有機農業研究，每杯碳排放量降低24%、生產中心100%使用再生能源，ESG形象大幅提升。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">媒體報導</div></div>
+    </div>
+
+    <div class="post-item" data-platform="ptt" data-sentiment="neu">
+      <span class="post-platform platform-ptt">PTT</span>
+      <span class="post-sentiment">🟡 中立</span>
+      <div class="post-content">
+        <div class="post-date">2025-12-21</div>
+        <a class="post-title" href="https://www.ptt.cc/bbs/Coffee/M.1703142959.A.D1F.html" target="_blank">[器材] 是否該入手膠囊咖啡機</a>
+        <div class="post-summary">詢問 Nespresso Original vs Vertuo 系統差異，多人建議 Original 系統較彈性，Vertuo 膠囊封閉、長期成本高，整體討論偏理性客觀。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Coffee 版討論串</div></div>
+    </div>
+
+    <div class="post-item" data-platform="ptt" data-sentiment="pos">
+      <span class="post-platform platform-ptt">PTT</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2023-01-20</div>
+        <a class="post-title" href="https://www.ptt.cc/bbs/Coffee/M.1674185709.A.358.html" target="_blank">[器材] Nespresso Mini 長期使用心得</a>
+        <div class="post-summary">使用者長期心得分享，肯定「小台不佔空間、出杯品質穩定、膠囊選擇多」，建議搭配獨立奶泡機使用，整體正面評價。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Coffee 版心得文</div></div>
+    </div>
+
+    <div class="post-item" data-platform="news" data-sentiment="pos">
+      <span class="post-platform platform-news">新聞媒體</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2026-01-15</div>
+        <a class="post-title" href="https://money.udn.com/money/story/5637/9281413" target="_blank">Nespresso「一指探索 縱享啡凡」開啟金馬好運年</a>
+        <div class="post-summary">經濟日報報導春節限定「福滿花開金運咖啡禮盒」，刮刮樂100%中獎設計引爆話題，咖啡機特價 NT$2,990 起，促銷期至1月31日。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">經濟日報</div></div>
+    </div>
+
+    <div class="post-item" data-platform="dcard" data-sentiment="neg">
+      <span class="post-platform platform-dcard">Dcard</span>
+      <span class="post-sentiment">❌ 負面</span>
+      <div class="post-content">
+        <div class="post-date">2026-02-10</div>
+        <a class="post-title" href="https://www.dcard.tw/@mikoya_1327/post/260943359" target="_blank">【2026膠囊咖啡機推薦】買錯真的變高級垃圾！Nespresso/雀巢挑選全攻略</a>
+        <div class="post-summary">以「高級垃圾」為警示標題，點出 Vertuo 系統膠囊只能買原廠、第三方膠囊不相容，長期耗材成本為主要購買風險，引發大量共鳴留言。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Dcard 爆文</div></div>
+    </div>
+
+    <div class="post-item" data-platform="dcard" data-sentiment="pos">
+      <span class="post-platform platform-dcard">Dcard</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2025-12-05</div>
+        <a class="post-title" href="https://www.dcard.tw/@zen1345136/post/259735530" target="_blank">2025 Nespresso 膠囊咖啡機全解析｜五款熱銷機型網友回饋</a>
+        <div class="post-summary">詳細介紹 Essenza Mini、Vertuo Pop、Lattissima One 等機型，整理網友實測回饋，涵蓋價格帶、適合族群與選購建議，整體正面。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Dcard 評測文</div></div>
+    </div>
+
+    <div class="post-item" data-platform="dcard" data-sentiment="pos">
+      <span class="post-platform platform-dcard">Dcard</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2026-03-08</div>
+        <a class="post-title" href="https://www.dcard.tw/@grcr/post/259169737" target="_blank">2026【綿密奶泡時光】Aeroccino 4 奶泡機推薦 — 打奶泡必看</a>
+        <div class="post-summary">6款奶泡機橫評，Aeroccino 4 以「不鏽鋼材質、靜音運轉、觸控鍵質感」奪推薦榜首，用戶表示奶泡比舊款更綿密，2年保固加分。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Dcard 評測文</div></div>
+    </div>
+
+    <div class="post-item" data-platform="dcard" data-sentiment="neu">
+      <span class="post-platform platform-dcard">Dcard</span>
+      <span class="post-sentiment">🟡 中立</span>
+      <div class="post-content">
+        <div class="post-date">2026-04-05</div>
+        <a class="post-title" href="https://www.dcard.tw/@lunlunu/post/260651549" target="_blank">2026【膠囊咖啡機推薦】Dcard網友激推！5款家用/辦公室迷你咖啡機評比</a>
+        <div class="post-summary">新手入門選購指南，Essenza Mini 以「輕巧、不佔空間、出杯穩定」持續獲選，但文末提醒「想喝更豐富風味建議配奶泡機」，屬中性推薦文。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Dcard 推薦文</div></div>
+    </div>
+
+    <div class="post-item" data-platform="ptt" data-sentiment="neg">
+      <span class="post-platform platform-ptt">PTT</span>
+      <span class="post-sentiment">❌ 負面</span>
+      <div class="post-content">
+        <div class="post-date">2022-07-26</div>
+        <a class="post-title" href="https://www.ptt.cc/bbs/E-appliance/M.1658815321.A.159.html" target="_blank">[問題] 膠囊咖啡機的實用性</a>
+        <div class="post-summary">詢問膠囊機實用性，多位回覆表示「買了沒多久就放著積灰塵」，主因是「系統選錯」或「清潔麻煩」，口感無法客製化被列為最大缺點。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">PTT E-appliance 版</div></div>
+    </div>
+
+    <div class="post-item" data-platform="threads" data-sentiment="pos">
+      <span class="post-platform platform-threads">Threads</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2026-01-20</div>
+        <a class="post-title" href="https://www.threads.net/@nespresso.tw" target="_blank">Threads 春節禮盒開箱 — 福滿花開金運咖啡禮盒</a>
+        <div class="post-summary">多位 Threads 用戶分享收到或購買 Nespresso 春節禮盒，刮刮樂互動設計引發曬貼熱潮，留言多為正面互動，品牌官方帳號積極回覆。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">❤️ 估計 1,200+ 讚</div></div>
+    </div>
+
+    <div class="post-item" data-platform="threads" data-sentiment="neu">
+      <span class="post-platform platform-threads">Threads</span>
+      <span class="post-sentiment">🟡 中立</span>
+      <div class="post-content">
+        <div class="post-date">2026-02-28</div>
+        <a class="post-title" href="https://www.threads.net/@nespresso.tw" target="_blank">Threads 討論：Nespresso 膠囊一顆20元，長期喝划算嗎？</a>
+        <div class="post-summary">用戶發起成本比較討論，計算每日一杯膠囊咖啡vs手沖vs咖啡廳的長期費用，引發熱烈留言，整體屬理性討論，無明顯情感傾向。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">❤️ 估計 890 讚</div></div>
+    </div>
+
+    <div class="post-item" data-platform="news" data-sentiment="pos">
+      <span class="post-platform platform-news">新聞媒體</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2025-11-20</div>
+        <a class="post-title" href="https://missmrt.pixnet.net/blog/post/222696592" target="_blank">Nespresso Vertuo POP膠囊咖啡機開箱評價（MRT小姐）</a>
+        <div class="post-summary">親子媒體部落客開箱 Vertuo POP，強調4000轉離心萃取 Crema 厚如雲朵、一鍵操作，評為「日常療癒能量」，適合生活感內容受眾。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">痞客邦部落格</div></div>
+    </div>
+
+    <div class="post-item" data-platform="dcard" data-sentiment="neg">
+      <span class="post-platform platform-dcard">Dcard</span>
+      <span class="post-sentiment">❌ 負面</span>
+      <div class="post-content">
+        <div class="post-date">2026-03-15</div>
+        <a class="post-title" href="https://www.dcard.tw/f/coffee/p/241286394" target="_blank">Nespresso Essenza Mini 使用一年後的真實心得</a>
+        <div class="post-summary">使用者回報一年後機器開始漏水，聯繫客服流程繁瑣，送修等待超過兩週，點名售後服務體驗差，引發同樣遭遇的用戶留言附和。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">Dcard Coffee版</div></div>
+    </div>
+
+    <div class="post-item" data-platform="threads" data-sentiment="pos">
+      <span class="post-platform platform-threads">Threads</span>
+      <span class="post-sentiment">✅ 正面</span>
+      <div class="post-content">
+        <div class="post-date">2026-04-10</div>
+        <a class="post-title" href="https://www.threads.net/@nespresso.tw" target="_blank">Threads 生活感貼文：晨間一杯 Nespresso 的儀式感 ☕</a>
+        <div class="post-summary">多位生活風格用戶分享「晨間咖啡儀式感」，以 Nespresso 搭配 Aeroccino 自製拿鐵為主題，視覺美觀貼文獲大量收藏與分享。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">❤️ 估計 2,100+ 讚</div></div>
+    </div>
+
+    <div class="post-item" data-platform="news" data-sentiment="neu">
+      <span class="post-platform platform-news">新聞媒體</span>
+      <span class="post-sentiment">🟡 中立</span>
+      <div class="post-content">
+        <div class="post-date">2026-04-19</div>
+        <a class="post-title" href="https://www.nespresso.com/tw/zh/golden-bean" target="_blank">2025–2026 Nespresso 會員金豆計劃集點活動整理</a>
+        <div class="post-summary">官方公告金豆集點兌換活動延長至2026年6月，購買50顆以上膠囊即可累積金豆，可兌換咖啡膠囊、折扣碼或奶泡機等周邊商品。</div>
+      </div>
+      <div class="post-meta"><div class="meta-item">🕐 今日最新</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  NESPRESSO 輿情分析儀表板 · 資料採集：WebSearch 多平台搜尋 · 關鍵字：nespresso、膠囊咖啡機、奶泡機 · 2026-04-19
+</div>
+
+<script>
+/* ===== CHARTS ===== */
+new Chart(document.getElementById('trendChart'), {
+  type: 'bar',
+  data: {
+    labels: ['2025年11月','2025年12月','2026年1月','2026年2月','2026年3月','2026年4月'],
+    datasets: [
+      { label: '✅ 正面', data: [2,1,2,1,2,2], backgroundColor: '#16a34a', borderRadius:4 },
+      { label: '❌ 負面', data: [0,1,0,2,1,0], backgroundColor: '#dc2626', borderRadius:4 },
+      { label: '🟡 中立', data: [1,2,1,1,1,2], backgroundColor: '#d97706', borderRadius:4 },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
+    }
+  }
+});
+
+new Chart(document.getElementById('pieChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['✅ 正面 40%','❌ 負面 20%','🟡 中立 40%'],
+    datasets: [{
+      data: [8,4,8],
+      backgroundColor: ['#16a34a','#dc2626','#d97706'],
+      borderWidth: 3, borderColor: '#fff'
+    }]
+  },
+  options: {
+    responsive: true, cutout: '62%',
+    plugins: { legend: { position: 'bottom', labels: { padding:10, font:{ size:11 } } } }
+  }
+});
+
+new Chart(document.getElementById('platformChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Threads','PTT','Dcard','新聞媒體'],
+    datasets: [{ label: '文章數', data: [4,4,6,5],
+      backgroundColor: ['#111','#16a34a','#86198f','#0369a1'], borderRadius:6 }]
+  },
+  options: {
+    indexAxis: 'y', responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+
+/* ===== FILTERS ===== */
+let currentPlatform = 'all';
+let currentSentiment = 'all';
+
+function filterPosts(type, value, btn) {
+  const allBtns = document.querySelectorAll('.filter-btn');
+  if (type === 'platform') {
+    currentPlatform = value;
+    allBtns.forEach((b, i) => { if (i < 5) b.classList.remove('active'); });
+  } else {
+    currentSentiment = value;
+    allBtns.forEach((b, i) => { if (i >= 5) b.classList.remove('active'); });
+  }
+  btn.classList.add('active');
+  document.querySelectorAll('.post-item').forEach(item => {
+    const showP = currentPlatform === 'all' || item.dataset.platform === currentPlatform;
+    const showS = currentSentiment === 'all' || item.dataset.sentiment === currentSentiment;
+    item.classList.toggle('hidden', !(showP && showS));
+  });
+}
+</script>
+</body>
+</html>
