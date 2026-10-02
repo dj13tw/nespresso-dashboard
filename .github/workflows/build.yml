@@ -1,0 +1,57 @@
+name: Build iOS app
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Test processing core
+        run: swift test --package-path Packages/WallPainterCore
+
+      - name: Check Core ML model on sample photos
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet coremltools==8.3.0 numpy pillow
+          .venv/bin/python tools/verify_model.py
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project WallPainter.xcodeproj -scheme WallPainter -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/WallPainter.app
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/WallPainter.app Payload/
+          zip -qry WallPainter-unsigned.ipa Payload
+          ls -lh WallPainter-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WallPainter-unsigned-ipa
+          path: WallPainter-unsigned.ipa
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
