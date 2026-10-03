@@ -17,11 +17,15 @@ jobs:
       - name: Test processing core
         run: swift test --package-path Packages/WallPainterCore
 
+      # coremltools ships its Core ML runtime bindings only for Python <= 3.13.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Check Core ML model on sample photos
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --quiet coremltools==8.3.0 numpy pillow
-          .venv/bin/python tools/verify_model.py
+          python -m pip install --quiet coremltools==8.3.0 numpy pillow
+          python tools/verify_model.py
 
       - name: Generate Xcode project
         run: |
