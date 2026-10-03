@@ -1,0 +1,594 @@
+<title>牆面換色</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen tool. Photo stage on top, a paint-chip drawer docked below. */
+:root {
+  --bg: #eceeed;          /* primer grey */
+  --panel: #f8f9f8;
+  --ink: #1d2422;
+  --muted: #5d6865;
+  --line: #d3d8d6;
+  --accent: #2f6b5b;      /* deep sage, the palette's own default */
+  --accent-ink: #ffffff;
+  --stage: #222826;
+  --tint: rgba(255, 255, 255, 0.14);
+  --font-body: "Noto Sans TC", "PingFang TC", "Heiti TC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151a19; --panel: #1d2322; --ink: #e8ecea; --muted: #9aa5a1; --line: #323b39;
+    --accent: #7fb7a5; --accent-ink: #10201b; --stage: #0c0f0e; --tint: rgba(255, 255, 255, 0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151a19; --panel: #1d2322; --ink: #e8ecea; --muted: #9aa5a1; --line: #323b39;
+  --accent: #7fb7a5; --accent-ink: #10201b; --stage: #0c0f0e; --tint: rgba(255, 255, 255, 0.10);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+button, input, label { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.topbar h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: 0.04em; flex: 1; min-width: 0; }
+.topbar h1 small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 8px; letter-spacing: 0; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
+  background: var(--panel); border-radius: 999px; padding: 7px 14px; font-size: 14px; white-space: nowrap;
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.icon-btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; width: 36px; height: 36px; display: grid; place-items: center; }
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn:disabled { opacity: 0.35; }
+
+.stage { position: relative; flex: 1; min-height: 0; background: var(--stage); display: grid; place-items: center; overflow: hidden; touch-action: manipulation; }
+.stage canvas { display: block; max-width: 100%; }
+.stage.drawing { touch-action: none; }
+.cursor { position: absolute; border: 1.5px solid #fff; border-radius: 50%; background: rgba(255,255,255,0.15); box-shadow: 0 0 0 1px rgba(0,0,0,0.5); pointer-events: none; transform: translate(-50%, -50%); }
+.badge { position: absolute; left: 12px; top: 12px; background: rgba(0,0,0,0.55); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+.compare {
+  position: absolute; right: 12px; bottom: 12px; border: 0; border-radius: 999px; padding: 9px 14px;
+  background: rgba(20, 24, 23, 0.72); color: #fff; font-size: 13px; user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 15, 14, 0.62); color: #fff; text-align: center; padding: 24px; }
+.overlay .box { display: grid; gap: 12px; justify-items: center; max-width: 320px; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.25); border-top-color: #fff; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+.progress { width: 220px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
+.progress > div { height: 100%; background: #fff; width: 0; transition: width 0.2s; }
+
+.drawer { background: var(--panel); border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 12px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--bg); border-radius: var(--radius); padding: 3px; gap: 3px; }
+.tools button { border: 0; background: transparent; border-radius: 8px; padding: 7px 0; font-size: 14px; color: var(--muted); }
+.tools button[aria-pressed="true"] { background: var(--panel); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+
+.current { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.current .chip { width: 34px; height: 34px; border-radius: 6px; border: 1px solid var(--line); flex: none; }
+.current .meta { flex: 1; min-width: 0; }
+.current .name { font-weight: 700; font-size: 15px; }
+.code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+.custom { position: relative; }
+.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+.fan { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.group { display: grid; gap: 6px; flex: none; }
+.group h2 { font-size: 11px; font-weight: 500; color: var(--muted); margin: 0; letter-spacing: 0.12em; }
+.group .row { display: flex; gap: 6px; }
+.swatch { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 0 0 5px; width: 62px; text-align: left; overflow: hidden; }
+.swatch .paint { height: 40px; display: block; }
+.swatch .label { display: block; font-size: 11px; padding: 4px 5px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swatch .label + .code { padding: 0 5px; font-size: 9px; display: block; }
+.swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+.slider { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.slider input { flex: 1; accent-color: var(--accent); }
+
+.sheet { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: grid; place-items: center; padding: 24px 16px; z-index: 10; }
+.sheet .card { background: var(--panel); border-radius: 14px; padding: 16px; display: grid; gap: 12px; max-width: 520px; width: 100%; max-height: 100%; overflow: auto; }
+.sheet img { border-radius: 8px; width: 100%; -webkit-touch-callout: default; }
+.sheet p { margin: 0; color: var(--muted); font-size: 14px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<header class="topbar">
+  <h1>牆面換色<small id="photoLabel">範例照片</small></h1>
+  <label class="btn primary" for="photoInput">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    拍照／選照片
+  </label>
+  <input id="photoInput" class="sr" type="file" accept="image/*">
+</header>
+
+<main class="stage" id="stage">
+  <canvas id="view" aria-label="換色預覽"></canvas>
+  <div class="cursor" id="cursor" hidden></div>
+  <span class="badge" id="badge" hidden>編輯範圍中：疊上粉紫色的地方會上色</span>
+  <button class="compare" id="compare" type="button">按住看原圖</button>
+  <div class="overlay" id="busy" hidden>
+    <div class="box">
+      <div class="spinner"></div>
+      <div id="busyText">正在辨識牆面…</div>
+      <div class="progress" id="progress" hidden><div id="progressBar"></div></div>
+      <small id="busyNote" style="opacity:.75"></small>
+    </div>
+  </div>
+</main>
+
+<section class="drawer" aria-label="工具">
+  <div class="tools" role="group" aria-label="工具">
+    <button type="button" data-tool="paint" aria-pressed="true">配色</button>
+    <button type="button" data-tool="add" aria-pressed="false">補畫</button>
+    <button type="button" data-tool="erase" aria-pressed="false">擦除</button>
+    <button type="button" data-tool="wand" aria-pressed="false">魔術棒</button>
+  </div>
+
+  <div id="panel-paint" class="panel">
+    <div class="current">
+      <span class="chip" id="currentChip"></span>
+      <div class="meta"><div class="name" id="currentName"></div><div class="code" id="currentHex"></div></div>
+      <button class="icon-btn" id="favBtn" type="button" aria-label="加入我的顏色">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path id="favPath" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>
+      </button>
+      <span class="icon-btn custom" title="自訂顏色">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17"/></svg>
+        <input id="customColor" type="color" aria-label="自訂顏色" value="#a3b49a">
+      </span>
+      <button class="icon-btn" id="undoBtn" type="button" aria-label="復原" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg>
+      </button>
+      <button class="btn" id="saveBtn" type="button">儲存</button>
+    </div>
+  </div>
+  <div class="fan" id="fan" aria-label="色票"></div>
+
+  <div id="panel-brush" class="panel" hidden>
+    <p class="hint" id="brushHint">用手指塗抹沒變色的牆面。</p>
+    <div class="slider"><label for="brushSize">筆刷</label><input id="brushSize" type="range" min="12" max="120" value="40"><button class="icon-btn" id="undoBtn2" type="button" aria-label="復原" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/></svg></button></div>
+  </div>
+  <div id="panel-wand" class="panel" hidden>
+    <p class="hint">點一下漏掉的牆面，會自動選取同色的整片區域（不會跨到地板和天花板）。</p>
+    <div class="slider"><label for="wandTol">範圍</label><input id="wandTol" type="range" min="0.5" max="2.5" step="0.1" value="1"><button class="btn" id="resetBtn" type="button">還原自動偵測</button></div>
+  </div>
+</section>
+
+<div class="sheet" id="saveSheet" hidden>
+  <div class="card">
+    <img id="saveImg" alt="換色結果">
+    <p>長按上面的圖片，選「加入照片」或「儲存影像」就能存到相簿。</p>
+    <button class="btn" id="closeSheet" type="button">關閉</button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/ort.wasm.min.js"></script>
+<script>
+"use strict";
+const SAMPLE_PROB = /*SAMPLE_PROB*/null;
+const WORKING_MAX = 1600;   // longer side of the processed photo
+const MODEL_SIZE = 512;
+// The model ships as base64 text in three parts (artifact files must be text or web media).
+const MODEL_PARTS = ["model/wall-b2-0.txt", "model/wall-b2-1.txt", "model/wall-b2-2.txt"];
+
+const PALETTE = [
+  ["白與米色", [["象牙白","#F2EDE3"],["奶油白","#EFE6D2"],["燕麥色","#DCCFB8"],["亞麻色","#D8C8AE"],["沙丘米","#CDB99A"]]],
+  ["灰色", [["霧灰","#C9C9C4"],["暖灰","#B5ADA3"],["水泥灰","#9A9A96"],["石板灰","#6E7275"],["炭灰","#45484B"]]],
+  ["綠色", [["鼠尾草綠","#A3B49A"],["抹茶綠","#8FA58A"],["薄荷綠","#BFD8C8"],["橄欖綠","#7A7D52"],["森林綠","#3F5B47"]]],
+  ["藍色", [["霧藍","#A9BCC8"],["灰藍","#7D93A3"],["湖水藍","#6F9FA6"],["海軍藍","#2F4A5E"],["靛青","#2B3A55"]]],
+  ["大地暖色", [["奶茶色","#C8A98C"],["乾燥玫瑰","#C49A97"],["芥末黃","#D2A84A"],["赤陶","#B5654A"],["焦糖","#A0683F"]]],
+  ["深色", [["墨綠","#2E3D36"],["午夜藍","#1F2A3A"],["深咖啡","#4A3A31"],["石墨黑","#2A2A2A"]]],
+];
+
+// ---------- color math (mirrors WallPainterCore/ColorMath.swift) ----------
+const TO_LIN = new Float32Array(256);
+for (let i = 0; i < 256; i++) { const c = i / 255; TO_LIN[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+const ENC_STEPS = 4096, TO_SRGB = new Uint8Array(ENC_STEPS);
+for (let i = 0; i < ENC_STEPS; i++) { const c = i / (ENC_STEPS - 1); const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; TO_SRGB[i] = Math.min(255, Math.max(0, Math.round(s * 255))); }
+const encode = (v) => TO_SRGB[(v <= 0 ? 0 : v >= 1 ? ENC_STEPS - 1 : (v * (ENC_STEPS - 1) + 0.5) | 0)];
+const hexToRgb = (h) => { const v = parseInt(h.slice(1), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
+
+// ---------- guided filter (mirrors GuidedFilter.swift) ----------
+function boxMean(src, w, h, r) {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const row = y * w; let sum = 0;
+    for (let x = 0; x <= Math.min(r, w - 1); x++) sum += src[row + x];
+    for (let x = 0; x < w; x++) {
+      const lo = x - r, hi = x + r;
+      tmp[row + x] = sum / (Math.min(hi, w - 1) - Math.max(lo, 0) + 1);
+      if (hi + 1 < w) sum += src[row + hi + 1];
+      if (lo >= 0) sum -= src[row + lo];
+    }
+  }
+  const sums = new Float64Array(w);
+  for (let y = 0; y <= Math.min(r, h - 1); y++) for (let x = 0; x < w; x++) sums[x] += tmp[y * w + x];
+  for (let y = 0; y < h; y++) {
+    const lo = y - r, hi = y + r, n = Math.min(hi, h - 1) - Math.max(lo, 0) + 1, row = y * w;
+    for (let x = 0; x < w; x++) out[row + x] = sums[x] / n;
+    if (hi + 1 < h) { const o = (hi + 1) * w; for (let x = 0; x < w; x++) sums[x] += tmp[o + x]; }
+    if (lo >= 0) { const o = lo * w; for (let x = 0; x < w; x++) sums[x] -= tmp[o + x]; }
+  }
+  return out;
+}
+function guidedFilter(I, p, w, h, r, eps) {
+  const n = w * h, ip = new Float32Array(n), ii = new Float32Array(n);
+  for (let i = 0; i < n; i++) { ip[i] = I[i] * p[i]; ii[i] = I[i] * I[i]; }
+  const mI = boxMean(I, w, h, r), mP = boxMean(p, w, h, r), cIP = boxMean(ip, w, h, r), cII = boxMean(ii, w, h, r);
+  for (let i = 0; i < n; i++) { const a = (cIP[i] - mI[i] * mP[i]) / (cII[i] - mI[i] * mI[i] + eps); ip[i] = a; ii[i] = mP[i] - a * mI[i]; }
+  const mA = boxMean(ip, w, h, r), mB = boxMean(ii, w, h, r), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = mA[i] * I[i] + mB[i];
+  return out;
+}
+function resizeBilinear(src, sw, sh, dw, dh) {
+  const out = new Float32Array(dw * dh), sx = sw / dw, sy = sh / dh;
+  for (let y = 0; y < dh; y++) {
+    const fy = Math.max(0, (y + 0.5) * sy - 0.5), y0 = Math.min(fy | 0, sh - 1), y1 = Math.min(y0 + 1, sh - 1), ty = fy - y0;
+    for (let x = 0; x < dw; x++) {
+      const fx = Math.max(0, (x + 0.5) * sx - 0.5), x0 = Math.min(fx | 0, sw - 1), x1 = Math.min(x0 + 1, sw - 1), tx = fx - x0;
+      const top = src[y0 * sw + x0] * (1 - tx) + src[y0 * sw + x1] * tx;
+      const bot = src[y1 * sw + x0] * (1 - tx) + src[y1 * sw + x1] * tx;
+      out[y * dw + x] = top * (1 - ty) + bot * ty;
+    }
+  }
+  return out;
+}
+function toMatte(values, threshold = 0.35, softness = 0.3) {
+  const out = new Uint8Array(values.length);
+  for (let i = 0; i < values.length; i++) { let t = (values[i] - threshold) / softness; t = t < 0 ? 0 : t > 1 ? 1 : t; out[i] = Math.round(t * t * (3 - 2 * t) * 255); }
+  return out;
+}
+
+// ---------- state ----------
+const S = {
+  w: 0, h: 0, pixels: null, original: null, gray: null, lum: null,
+  matte: null, aiMatte: null, barrier: null, wallLum: 0.5,
+  color: { name: "鼠尾草綠", hex: "#A3B49A" }, tool: "paint", undo: [], showOriginal: false,
+  wandCache: null, session: null,
+};
+const $ = (id) => document.getElementById(id);
+const view = $("view"), ctx = view.getContext("2d", { willReadFrequently: true });
+
+function setPhoto(canvas) {
+  S.w = canvas.width; S.h = canvas.height;
+  S.original = canvas.getContext("2d").getImageData(0, 0, S.w, S.h);
+  const p = S.original.data, n = S.w * S.h;
+  S.pixels = p; S.gray = new Float32Array(n); S.lum = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = p[i * 4], g = p[i * 4 + 1], b = p[i * 4 + 2];
+    S.gray[i] = (r + g + b) / 765;
+    S.lum[i] = 0.2126 * TO_LIN[r] + 0.7152 * TO_LIN[g] + 0.0722 * TO_LIN[b];
+  }
+  S.wandCache = null; S.undo = []; updateUndo();
+  view.width = S.w; view.height = S.h; fitCanvas();
+}
+function applyPrediction(wall, barrier, pw, ph) {
+  const up = resizeBilinear(wall, pw, ph, S.w, S.h);
+  const r = Math.max(2, Math.round(Math.max(S.w, S.h) / 80));
+  S.aiMatte = toMatte(guidedFilter(S.gray, up, S.w, S.h, r, 1e-3));
+  S.matte = S.aiMatte.slice();
+  S.barrier = { data: barrier, w: pw, h: ph };
+  refreshWallLum(); render();
+  let cov = 0; for (let i = 0; i < S.matte.length; i++) cov += S.matte[i];
+  if (cov / (S.matte.length * 255) < 0.01) toast("沒有偵測到牆面，可以用「補畫」或「魔術棒」自己選。", 4000);
+}
+function refreshWallLum() {
+  let wsum = 0, tot = 0; const m = S.matte, l = S.lum;
+  for (let i = 0; i < m.length; i++) if (m[i]) { wsum += l[i] * m[i]; tot += m[i]; }
+  if (tot > 0) S.wallLum = wsum / tot;
+}
+
+// ---------- recolor (mirrors Recolorer.swift) ----------
+function renderTo(imageData, highlight) {
+  const out = imageData.data, src = S.pixels, m = S.matte, l = S.lum, n = S.w * S.h;
+  const [cr, cg, cb] = hexToRgb(S.color.hex), k = 1 / Math.max(S.wallLum, 1e-4);
+  const tr = TO_LIN[cr] * k, tg = TO_LIN[cg] * k, tb = TO_LIN[cb] * k;
+  out.set(src);
+  for (let i = 0; i < n; i++) {
+    const a = m[i]; if (!a) continue;
+    const s = l[i]; let r = encode(tr * s), g = encode(tg * s), b = encode(tb * s);
+    if (highlight) { r = (r * 65 + 255 * 35) / 100 | 0; g = (g * 65) / 100 | 0; b = (b * 65 + 200 * 35) / 100 | 0; }
+    const p = i * 4;
+    if (a === 255) { out[p] = r; out[p + 1] = g; out[p + 2] = b; }
+    else { const ia = 255 - a; out[p] = (src[p] * ia + r * a + 127) / 255; out[p + 1] = (src[p + 1] * ia + g * a + 127) / 255; out[p + 2] = (src[p + 2] * ia + b * a + 127) / 255; }
+  }
+}
+let frame = null, renderQueued = false;
+function render() {
+  if (!S.original) return;
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    if (S.showOriginal || !S.matte) { ctx.putImageData(S.original, 0, 0); return; }
+    if (!frame || frame.width !== S.w || frame.height !== S.h) frame = ctx.createImageData(S.w, S.h);
+    renderTo(frame, S.tool !== "paint");
+    ctx.putImageData(frame, 0, 0);
+  });
+}
+function fitCanvas() {
+  const st = $("stage"), sw = st.clientWidth, sh = st.clientHeight;
+  if (!S.w || !sw || !sh) return;
+  const k = Math.min(sw / S.w, sh / S.h);
+  view.style.width = Math.floor(S.w * k) + "px"; view.style.height = Math.floor(S.h * k) + "px";
+}
+addEventListener("resize", fitCanvas);
+
+// ---------- brush (mirrors Brush.swift) ----------
+function stamp(cx, cy, radius, adding, hardness = 0.6) {
+  const m = S.matte, w = S.w, h = S.h, solid = radius * hardness;
+  const x0 = Math.max(0, Math.floor(cx - radius)), x1 = Math.min(w - 1, Math.floor(cx + radius));
+  const y0 = Math.max(0, Math.floor(cy - radius)), y1 = Math.min(h - 1, Math.floor(cy + radius));
+  for (let y = y0; y <= y1; y++) {
+    const dy = y + 0.5 - cy;
+    for (let x = x0; x <= x1; x++) {
+      const dx = x + 0.5 - cx, d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= radius) continue;
+      const level = Math.round((d <= solid ? 1 : (radius - d) / (radius - solid)) * 255), i = y * w + x;
+      m[i] = adding ? Math.max(m[i], level) : Math.min(m[i], 255 - level);
+    }
+  }
+}
+function stroke(a, b, radius, adding) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), steps = Math.max(1, Math.floor(len / Math.max(1, radius * 0.25)));
+  for (let s = 1; s <= steps; s++) stamp(a[0] + dx * s / steps, a[1] + dy * s / steps, radius, adding);
+}
+
+// ---------- magic wand (mirrors MagicWand.swift) ----------
+function wandSetup() {
+  const factor = Math.max(1, Math.ceil(Math.max(S.w, S.h) / 1024)), w = Math.max(1, (S.w / factor) | 0), h = Math.max(1, (S.h / factor) | 0);
+  const px = new Uint8Array(w * h * 3), area = factor * factor, src = S.pixels;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let r = 0, g = 0, b = 0;
+    for (let dy = 0; dy < factor; dy++) { let i = ((y * factor + dy) * S.w + x * factor) * 4; for (let dx = 0; dx < factor; dx++, i += 4) { r += src[i]; g += src[i + 1]; b += src[i + 2]; } }
+    const o = (y * w + x) * 3; px[o] = r / area; px[o + 1] = g / area; px[o + 2] = b / area;
+  }
+  let blocked = new Uint8Array(w * h);
+  if (S.barrier) { const bz = resizeBilinear(S.barrier.data, S.barrier.w, S.barrier.h, w, h); for (let i = 0; i < bz.length; i++) blocked[i] = bz[i] > 0.5 ? 1 : 0; }
+  return { factor, w, h, px, blocked };
+}
+function wandSelect(x, y, tol) {
+  if (!S.wandCache) S.wandCache = wandSetup();
+  const { factor, w, h, px, blocked } = S.wandCache;
+  const sx = Math.min(w - 1, (x / factor) | 0), sy = Math.min(h - 1, (y / factor) | 0);
+  const chroma = (i) => { const r = px[i * 3], g = px[i * 3 + 1], b = px[i * 3 + 2], s = Math.max(r + g + b, 1); return [r / s, g / s, s]; };
+  const seedI = sy * w + sx, seed = chroma(seedI), cLim = 0.018 * tol, stepLim = (8 * tol) | 0, minB = seed[2] * 0.35, maxB = seed[2] * 2 + 30;
+  const sel = new Uint8Array(w * h), queue = new Int32Array(w * h); let head = 0, tail = 0;
+  sel[seedI] = 1; queue[tail++] = seedI;
+  const visit = (i, j) => {
+    if (sel[j] || blocked[j]) return;
+    const step = Math.max(Math.abs(px[i * 3] - px[j * 3]), Math.abs(px[i * 3 + 1] - px[j * 3 + 1]), Math.abs(px[i * 3 + 2] - px[j * 3 + 2]));
+    if (step > stepLim) return;
+    const c = chroma(j);
+    if (c[2] < minB || c[2] > maxB || Math.abs(c[0] - seed[0]) > cLim || Math.abs(c[1] - seed[1]) > cLim) return;
+    sel[j] = 1; queue[tail++] = j;
+  };
+  while (head < tail) {
+    const i = queue[head++], x0 = i % w, y0 = (i / w) | 0;
+    if (x0 > 0) visit(i, i - 1); if (x0 < w - 1) visit(i, i + 1); if (y0 > 0) visit(i, i - w); if (y0 < h - 1) visit(i, i + w);
+  }
+  const soft = new Float32Array(w * h); for (let i = 0; i < soft.length; i++) soft[i] = sel[i];
+  const closed = boxMean(soft, w, h, 1); for (let i = 0; i < closed.length; i++) closed[i] = closed[i] > 0.4 ? 1 : 0;
+  const full = resizeBilinear(closed, w, h, S.w, S.h);
+  return { matte: toMatte(guidedFilter(S.gray, full, S.w, S.h, Math.max(2, (Math.max(S.w, S.h) / 300) | 0), 1e-3)), count: tail };
+}
+
+// ---------- undo ----------
+function pushUndo() { S.undo.push(S.matte.slice()); if (S.undo.length > 10) S.undo.shift(); updateUndo(); }
+function updateUndo() { $("undoBtn").disabled = $("undoBtn2").disabled = S.undo.length === 0; }
+function undo() { if (!S.undo.length) return; S.matte = S.undo.pop(); updateUndo(); refreshWallLum(); render(); }
+$("undoBtn").onclick = $("undoBtn2").onclick = undo;
+$("resetBtn").onclick = () => { if (!S.aiMatte) return; pushUndo(); S.matte = S.aiMatte.slice(); refreshWallLum(); render(); };
+
+// ---------- AI model ----------
+async function loadSession(onProgress) {
+  if (S.session) return S.session;
+  if (!window.ort) throw new Error("AI 執行環境載入失敗，請檢查網路後重新整理頁面。");
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.wasmPaths = new URL("ort/", location.href).href;
+  const total = 37850952; let loaded = 0; const texts = [];
+  for (const url of MODEL_PARTS) {
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error("模型下載失敗（" + res.status + "），請稍後再試。");
+    const reader = res.body.getReader(), chunks = [];
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); loaded += value.length; onProgress(loaded, total); }
+    texts.push(new Blob(chunks));
+  }
+  const b64 = await new Blob(texts).text(), bin = atob(b64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  S.session = await ort.InferenceSession.create(buf, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+  return S.session;
+}
+async function predict(canvas) {
+  const c = document.createElement("canvas"); c.width = c.height = MODEL_SIZE;
+  const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(canvas, 0, 0, MODEL_SIZE, MODEL_SIZE);
+  const d = g.getImageData(0, 0, MODEL_SIZE, MODEL_SIZE).data, n = MODEL_SIZE * MODEL_SIZE, input = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { input[i] = d[i * 4] / 255; input[n + i] = d[i * 4 + 1] / 255; input[2 * n + i] = d[i * 4 + 2] / 255; }
+  const out = await S.session.run({ image: new ort.Tensor("float32", input, [1, 3, MODEL_SIZE, MODEL_SIZE]) });
+  const dims = out.wall.dims;
+  return { wall: out.wall.data, barrier: out.barrier.data, w: dims[3], h: dims[2] };
+}
+
+// ---------- photo input ----------
+function busy(on, text, note) {
+  $("busy").hidden = !on; if (text) $("busyText").textContent = text; $("busyNote").textContent = note || "";
+  if (!on) $("progress").hidden = true;
+}
+async function imageToCanvas(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.decoding = "async"; img.src = url; await img.decode();
+    const k = Math.min(1, WORKING_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+$("photoInput").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  try {
+    busy(true, "讀取照片…");
+    const canvas = await imageToCanvas(file);
+    setPhoto(canvas); S.matte = null; render();
+    $("photoLabel").textContent = "你的照片";
+    if (!S.session) {
+      busy(true, "下載 AI 模型…", "第一次需要下載約 48 MB（建議用 Wi-Fi）");
+      $("progress").hidden = false;
+      await loadSession((a, t) => { $("progressBar").style.width = Math.min(100, a / t * 100) + "%"; $("busyNote").textContent = (a / 1e6).toFixed(0) + " / " + (t / 1e6).toFixed(0) + " MB"; });
+      $("progress").hidden = true;
+    }
+    busy(true, "正在辨識牆面…", "約需 3–10 秒");
+    await new Promise((r) => setTimeout(r, 30));
+    const p = await predict(canvas);
+    applyPrediction(p.wall, p.barrier, p.w, p.h);
+    busy(false);
+  } catch (err) {
+    console.error(err); busy(false);
+    toast(err && err.message ? err.message : "處理照片時發生錯誤，請換一張再試。", 5000);
+    if (!S.matte && S.original) { S.matte = new Uint8Array(S.w * S.h); S.aiMatte = S.matte.slice(); render(); }
+  }
+});
+
+// ---------- tools ----------
+function setTool(tool) {
+  S.tool = tool;
+  document.querySelectorAll(".tools button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === tool)));
+  $("panel-paint").hidden = $("fan").hidden = tool !== "paint";
+  $("panel-brush").hidden = !(tool === "add" || tool === "erase");
+  $("panel-wand").hidden = tool !== "wand";
+  $("brushHint").textContent = tool === "add" ? "用手指塗抹沒變色的牆面。" : "塗抹不該上色的地方（家具、天花板）。";
+  $("badge").hidden = tool === "paint";
+  $("stage").classList.toggle("drawing", tool === "add" || tool === "erase");
+  requestAnimationFrame(fitCanvas);
+  render();
+}
+document.querySelectorAll(".tools button").forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
+
+function toImage(ev) {
+  const r = view.getBoundingClientRect();
+  return [(ev.clientX - r.left) * S.w / r.width, (ev.clientY - r.top) * S.h / r.height, S.w / r.width];
+}
+let last = null;
+const cursor = $("cursor");
+function showCursor(ev) {
+  const st = $("stage").getBoundingClientRect(), size = +$("brushSize").value;
+  cursor.style.left = ev.clientX - st.left + "px"; cursor.style.top = ev.clientY - st.top + "px";
+  cursor.style.width = cursor.style.height = size + "px"; cursor.hidden = false;
+}
+view.addEventListener("pointerdown", (ev) => {
+  if (!S.matte) return;
+  if (S.tool === "add" || S.tool === "erase") {
+    ev.preventDefault(); view.setPointerCapture(ev.pointerId);
+    const [x, y, k] = toImage(ev); pushUndo(); last = [x, y];
+    stamp(x, y, +$("brushSize").value / 2 * k, S.tool === "add"); showCursor(ev); render();
+  } else if (S.tool === "wand") {
+    const [x, y] = toImage(ev);
+    if (x < 0 || y < 0 || x >= S.w || y >= S.h) return;
+    busy(true, "選取中…");
+    setTimeout(() => {
+      const res = wandSelect(x | 0, y | 0, +$("wandTol").value); busy(false);
+      let any = false; for (let i = 0; i < res.matte.length; i++) if (res.matte[i]) { any = true; break; }
+      if (!any) { toast("這裡選不到牆面，試試點在平整的牆上，或改用「補畫」。", 3500); return; }
+      pushUndo(); for (let i = 0; i < res.matte.length; i++) if (res.matte[i] > S.matte[i]) S.matte[i] = res.matte[i];
+      refreshWallLum(); render();
+    }, 20);
+  }
+});
+view.addEventListener("pointermove", (ev) => {
+  if (!last) return;
+  const [x, y, k] = toImage(ev); stroke(last, [x, y], +$("brushSize").value / 2 * k, S.tool === "add"); last = [x, y];
+  showCursor(ev); render();
+});
+const endStroke = () => { if (!last) return; last = null; cursor.hidden = true; refreshWallLum(); render(); };
+view.addEventListener("pointerup", endStroke); view.addEventListener("pointercancel", endStroke);
+
+const cmp = $("compare");
+const press = (on) => (ev) => { ev.preventDefault(); S.showOriginal = on; cmp.textContent = on ? "原圖" : "按住看原圖"; render(); };
+cmp.addEventListener("pointerdown", press(true)); cmp.addEventListener("pointerup", press(false));
+cmp.addEventListener("pointerleave", press(false)); cmp.addEventListener("pointercancel", press(false));
+cmp.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ---------- palette ----------
+let favorites = [];
+try { favorites = JSON.parse(localStorage.getItem("favoriteColors") || "[]"); } catch (_) { favorites = []; }
+const saveFavs = () => { try { localStorage.setItem("favoriteColors", JSON.stringify(favorites)); } catch (_) {} };
+function buildFan() {
+  const fan = $("fan"); fan.textContent = "";
+  const groups = (favorites.length ? [["我的顏色", favorites.map((f) => [f.name, f.hex])]] : []).concat(PALETTE);
+  for (const [title, colors] of groups) {
+    const g = document.createElement("div"); g.className = "group";
+    const h = document.createElement("h2"); h.textContent = title; g.appendChild(h);
+    const row = document.createElement("div"); row.className = "row";
+    for (const [name, hex] of colors) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "swatch"; b.dataset.hex = hex;
+      b.setAttribute("aria-pressed", String(hex === S.color.hex)); b.setAttribute("aria-label", name + " " + hex);
+      const paint = document.createElement("span"); paint.className = "paint"; paint.style.background = hex;
+      const label = document.createElement("span"); label.className = "label"; label.textContent = name;
+      const code = document.createElement("span"); code.className = "code"; code.textContent = hex;
+      b.append(paint, label, code); b.onclick = () => chooseColor(name, hex); row.appendChild(b);
+    }
+    g.appendChild(row); fan.appendChild(g);
+  }
+}
+function chooseColor(name, hex) {
+  S.color = { name, hex: hex.toUpperCase() };
+  $("currentChip").style.background = hex; $("currentName").textContent = name; $("currentHex").textContent = S.color.hex;
+  const fav = favorites.some((f) => f.hex === S.color.hex);
+  $("favPath").setAttribute("fill", fav ? "currentColor" : "none");
+  $("favBtn").setAttribute("aria-label", fav ? "從我的顏色移除" : "加入我的顏色");
+  document.querySelectorAll(".swatch").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.hex === S.color.hex)));
+  render();
+}
+$("favBtn").onclick = () => {
+  const i = favorites.findIndex((f) => f.hex === S.color.hex);
+  if (i >= 0) favorites.splice(i, 1); else favorites.unshift({ name: S.color.name, hex: S.color.hex });
+  saveFavs(); buildFan(); chooseColor(S.color.name, S.color.hex);
+};
+$("customColor").addEventListener("input", (e) => chooseColor("自訂 " + e.target.value.toUpperCase(), e.target.value));
+
+// ---------- save ----------
+function toast(msg, ms = 2500) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => (t.hidden = true), ms); }
+$("saveBtn").onclick = async () => {
+  if (!S.matte) return;
+  const c = document.createElement("canvas"); c.width = S.w; c.height = S.h;
+  const g = c.getContext("2d"), img = g.createImageData(S.w, S.h); renderTo(img, false); g.putImageData(img, 0, 0);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.92));
+  const filename = "牆面換色-" + S.color.name.replace(/[^\p{L}\p{N}]+/gu, "") + ".jpg";
+  let downloads = null;
+  try { downloads = window.claude && (await window.claude.use("downloads")); } catch (_) { downloads = null; }
+  if (downloads) {
+    try { await downloads.save({ filename, data: blob }); toast("已送出儲存"); return; }
+    catch (err) { if (err && err.code === "declined") return; }
+  }
+  $("saveImg").src = URL.createObjectURL(blob); $("saveSheet").hidden = false;
+};
+$("closeSheet").onclick = () => { $("saveSheet").hidden = true; URL.revokeObjectURL($("saveImg").src); };
+
+// ---------- start with the sample photo ----------
+async function start() {
+  buildFan(); chooseColor(S.color.name, S.color.hex); setTool("paint");
+  const img = new Image(); img.src = "sample.jpg";
+  try { await img.decode(); } catch (_) { return; }
+  const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext("2d").drawImage(img, 0, 0); setPhoto(c);
+  const dec = (b64) => { const s = atob(b64), a = new Float32Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) / 255; return a; };
+  if (SAMPLE_PROB) applyPrediction(dec(SAMPLE_PROB.wall), dec(SAMPLE_PROB.barrier), SAMPLE_PROB.w, SAMPLE_PROB.h);
+}
+start();
+</script>

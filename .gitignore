@@ -9,3 +9,9 @@ xcuserdata/
 .DS_Store
 tools/out/
 __pycache__/
+
+# Web version build outputs (regenerate: tools/export_onnx.py, then web/build.py)
+web/build/
+web/model/
+web/ort/
+web/index.html
