@@ -38,6 +38,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
 .rng button{padding:5px 12px;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--muted);cursor:pointer;font-size:.78rem}
 .rng button.active,.rng button:hover{background:#0f3460;color:#fff;border-color:#0f3460}
 .chart-wrap{position:relative;height:280px}
+.ev-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:20px 0 10px;padding-top:16px;border-top:1px solid var(--line)}
+.ev-head .rng{flex-wrap:wrap}
+.ev-list{display:grid;gap:10px}
+.ev{display:grid;grid-template-columns:28px 1fr;gap:10px;background:var(--soft);border-radius:10px;padding:12px 14px}
+.ev-no{width:24px;height:24px;border-radius:50%;color:#fff;font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.ev-top{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.ev-date{font-size:.75rem;color:var(--muted);font-weight:600}
+.ev-cat{font-size:.7rem;padding:1px 8px;border-radius:10px;background:var(--card);color:var(--muted);border:1px solid var(--line)}
+.ev-title{font-size:.9rem;font-weight:700}
+.ev-detail{font-size:.78rem;color:var(--muted);line-height:1.6;margin-top:4px}
+.ev-impact{font-size:.78rem;margin-top:6px;font-weight:600}
+.ev-src{font-size:.72rem;margin-top:4px}
+.ev-src a{color:var(--accent);margin-right:10px}
+.ev-empty{font-size:.8rem;color:var(--faint)}
 .ind-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ind{background:var(--soft);border-radius:10px;padding:14px 16px;border-left:4px solid var(--line)}
 .ind-name{font-size:.85rem;font-weight:700}
@@ -98,6 +112,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
       </div>
     </div>
     <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+    <div class="ev-head">
+      <div class="title" style="margin:0">📰 重大事件</div>
+      <div class="rng" id="evCat">
+        <button data-c="all" class="active">全部</button><button data-c="policy">🏛️ 政策／政治</button><button data-c="company">🏢 企業</button><button data-c="macro">📊 經濟數據</button>
+      </div>
+    </div>
+    <div class="ev-list" id="evList"><div class="ev-empty">載入中…</div></div>
+    <div class="ind-note" style="margin:10px 0 0">事件依新聞報導整理；指數變化只呈現同一期間的情緒變動，不代表事件就是唯一原因。</div>
   </div>
 
   <div class="card">
@@ -147,16 +169,63 @@ function setCmp(key,v,now){
 }
 const fmtDate=ms=>new Date(ms).toLocaleDateString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit'});
 
+// ── 重大事件 ──
+const CATS={policy:{icon:'🏛️',label:'政策／政治',color:'#7c3aed'},company:{icon:'🏢',label:'企業',color:'#0369a1'},macro:{icon:'📊',label:'經濟數據',color:'#b45309'}};
+let events=[],evCat='all',curDays=180,visPts=[];
+const utcDay=ms=>new Date(ms).toISOString().slice(0,10);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const shownEvents=()=>events.map((e,i)=>({...e,no:i+1})).filter(e=>evCat==='all'||e.cat===evCat);
+const histIdx=(arr,date)=>arr.findIndex(p=>utcDay(p.x)>=date);
+function impact(e){
+  const i=histIdx(hist,e.date);if(i<0)return '尚無指數資料';
+  const r=v=>Math.round(v),parts=[];
+  if(i>0)parts.push(`前一日 ${r(hist[i-1].y)}`);
+  parts.push(`當日 ${r(hist[i].y)}`);
+  if(hist[i+3])parts.push(`3 個交易日後 ${r(hist[i+3].y)}`);
+  const base=i>0?hist[i-1].y:hist[i].y,end=(hist[i+3]||hist.at(-1)).y,d=r(end)-r(base);
+  const c=d>0?'#16a34a':d<0?'#dc2626':'var(--muted)';
+  return `${parts.join(' → ')}　<span style="color:${c}">（${d>0?'▲':d<0?'▼':''}${d?Math.abs(d):'持平'}${hist[i+3]?'':'，至今'}）</span>`;
+}
+function renderEvents(){
+  const list=shownEvents(),el=document.getElementById('evList');
+  if(!list.length){el.innerHTML='<div class="ev-empty">這個分類目前沒有事件。</div>';return;}
+  el.innerHTML=list.slice().reverse().map(e=>{const c=CATS[e.cat]||CATS.macro;
+    return `<div class="ev"><div class="ev-no" style="background:${c.color}">${e.no}</div><div>
+      <div class="ev-top"><span class="ev-date">${e.date.replace(/-/g,'/')}</span><span class="ev-cat">${c.icon} ${c.label}</span><span class="ev-title">${esc(e.title)}</span></div>
+      <div class="ev-detail">${esc(e.detail||'')}</div>
+      ${hist.length?`<div class="ev-impact">恐懼貪婪指數：${impact(e)}</div>`:''}
+      <div class="ev-src">${(e.sources||[]).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)} ↗</a>`).join('')}</div>
+    </div></div>`;}).join('');
+}
+const eventMarkers={id:'eventMarkers',afterDatasetsDraw(ch){
+  const {ctx,chartArea:a,scales:{x}}=ch;
+  shownEvents().forEach(e=>{const i=histIdx(visPts,e.date);if(i<0)return;
+    const px=Math.max(a.left+9,Math.min(a.right-9,x.getPixelForValue(i))),c=(CATS[e.cat]||CATS.macro).color;
+    ctx.save();ctx.strokeStyle=c;ctx.setLineDash([4,4]);ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(px,a.top+12);ctx.lineTo(px,a.bottom);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=c;ctx.beginPath();ctx.arc(px,a.top+9,9,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e.no,px,a.top+9.5);
+    ctx.restore();});
+}};
+document.getElementById('evCat').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#evCat button').forEach(x=>x.classList.toggle('active',x===b));
+  evCat=b.dataset.c;renderEvents();if(chart)chart.update();
+});
+fetch('events.json',{cache:'no-store'}).then(r=>r.ok?r.json():[]).catch(()=>[])
+  .then(list=>{events=(Array.isArray(list)?list:[]).filter(e=>e&&e.date&&e.title).sort((a,b)=>a.date<b.date?-1:1);renderEvents();if(chart)chart.update();});
+
 let hist=[],chart=null;
 function drawHist(days){
+  curDays=days;
   const cut=days?Date.now()-days*864e5:0;
-  const pts=hist.filter(p=>p.x>=cut);
+  const pts=visPts=hist.filter(p=>p.x>=cut);
   const data={labels:pts.map(p=>fmtDate(p.x)),datasets:[{label:'恐懼與貪婪指數',data:pts.map(p=>Math.round(p.y*10)/10),
     borderColor:'#0f3460',borderWidth:2,pointRadius:0,tension:.25,
     segment:{borderColor:c=>zone(c.p1.parsed.y).color}}]};
   const dark=matchMedia('(prefers-color-scheme:dark)').matches,grid=dark?'#1f2937':'#f1f5f9',tick=dark?'#9ca3af':'#64748b';
   if(chart)chart.destroy();
-  chart=new Chart(document.getElementById('histChart'),{type:'line',data,options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+  chart=new Chart(document.getElementById('histChart'),{type:'line',data,plugins:[eventMarkers],options:{layout:{padding:{top:4}},responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
     plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y}（${zone(c.parsed.y).label}）`}}},
     scales:{y:{min:0,max:100,ticks:{stepSize:25,color:tick},grid:{color:grid}},x:{ticks:{maxTicksLimit:8,color:tick},grid:{display:false}}}}});
 }
@@ -208,6 +277,7 @@ fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
     saveSnap(day,snap);
     hist=((d.fear_and_greed_historical||{}).data||[]).filter(p=>typeof p.y==='number').sort((a,b)=>a.x-b.x);
     if(hist.length)drawHist(180);
+    renderEvents();
   })
   .catch(()=>{
     document.getElementById('status').style.display='block';
