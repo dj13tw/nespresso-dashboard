@@ -52,6 +52,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
 .ev-src{font-size:.72rem;margin-top:4px}
 .ev-src a{color:var(--accent);margin-right:10px}
 .ev-empty{font-size:.8rem;color:var(--faint)}
+.disc-card{margin-bottom:16px}
+.disc{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.disc-main{border-left:4px solid var(--line);padding-left:16px}
+.disc-label{font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:4px}
+.disc-act{font-size:1.5rem;font-weight:800}
+.disc-sub{font-size:.88rem;margin-top:6px;line-height:1.6}
+.disc-why{font-size:.8rem;color:var(--muted);line-height:1.7;margin:8px 0 0 18px}
+.disc-cool{margin-top:10px;background:#fef3c7;color:#92400e;border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.6}
+.disc-side{background:var(--soft);border-radius:10px;padding:12px 14px}
+.disc-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
+.disc-tbl td{padding:4px 6px}
+.disc-tbl td:first-child{color:var(--muted);width:64px}
+.disc-tbl tr.on{background:var(--card);font-weight:700}
+.disc-check{font-size:.78rem;color:var(--muted);line-height:1.7;margin-left:18px}
+@media (max-width:820px){.disc{grid-template-columns:1fr}}
 .ind-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ind{background:var(--soft);border-radius:10px;padding:14px 16px;border-left:4px solid var(--line)}
 .ind-name{font-size:.85rem;font-weight:700}
@@ -82,6 +97,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
 
 <div class="wrap">
   <div class="status" id="status">暫時無法取得 CNN 即時資料（可能是 CNN 不允許其他網站跨網域讀取）。請直接查看 <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noopener">CNN 原始頁面</a>。</div>
+
+  <div class="card disc-card">
+    <div class="title">🧭 操作紀律參考</div>
+    <div class="disc" id="disc"><div class="ev-empty">載入中…</div></div>
+    <div class="ind-note" style="margin:12px 0 0">這是依市場情緒套用的通用紀律規則，用來避免跟著新聞追高殺低，不是個人化的投資建議。實際動作請一併考量你的資金用途、持股比例和風險承受度。情緒指標只反映市場氣氛，無法預測短期漲跌。</div>
+  </div>
 
   <div class="top">
     <div class="card gauge">
@@ -175,9 +196,11 @@ let events=[],evCat='all',curDays=180,visPts=[];
 const utcDay=ms=>new Date(ms).toISOString().slice(0,10);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const shownEvents=()=>events.map((e,i)=>({...e,no:i+1})).filter(e=>evCat==='all'||e.cat===evCat);
-const histIdx=(arr,date)=>arr.findIndex(p=>utcDay(p.x)>=date);
+// 事件日期一律用美東日期；盤後（after）發生的事件，影響的是下一個交易日
+const SESSIONS={pre:'盤前',intraday:'盤中',after:'盤後'};
+const histIdx=(arr,e)=>arr.findIndex(p=>e.session==='after'?utcDay(p.x)>e.date:utcDay(p.x)>=e.date);
 function impact(e){
-  const i=histIdx(hist,e.date);if(i<0)return '尚無指數資料';
+  const i=histIdx(hist,e);if(i<0)return '尚無指數資料';
   const r=v=>Math.round(v),parts=[];
   if(i>0)parts.push(`前一日 ${r(hist[i-1].y)}`);
   parts.push(`當日 ${r(hist[i].y)}`);
@@ -191,7 +214,7 @@ function renderEvents(){
   if(!list.length){el.innerHTML='<div class="ev-empty">這個分類目前沒有事件。</div>';return;}
   el.innerHTML=list.slice().reverse().map(e=>{const c=CATS[e.cat]||CATS.macro;
     return `<div class="ev"><div class="ev-no" style="background:${c.color}">${e.no}</div><div>
-      <div class="ev-top"><span class="ev-date">${e.date.replace(/-/g,'/')}</span><span class="ev-cat">${c.icon} ${c.label}</span><span class="ev-title">${esc(e.title)}</span></div>
+      <div class="ev-top"><span class="ev-date">${e.date.replace(/-/g,'/')}${e.time||SESSIONS[e.session]?`・美東${e.time?' '+esc(e.time):''}${SESSIONS[e.session]?' '+SESSIONS[e.session]:''}`:''}</span><span class="ev-cat">${c.icon} ${c.label}</span><span class="ev-title">${esc(e.title)}</span></div>
       <div class="ev-detail">${esc(e.detail||'')}</div>
       ${hist.length?`<div class="ev-impact">恐懼貪婪指數：${impact(e)}</div>`:''}
       <div class="ev-src">${(e.sources||[]).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)} ↗</a>`).join('')}</div>
@@ -199,7 +222,7 @@ function renderEvents(){
 }
 const eventMarkers={id:'eventMarkers',afterDatasetsDraw(ch){
   const {ctx,chartArea:a,scales:{x}}=ch;
-  shownEvents().forEach(e=>{const i=histIdx(visPts,e.date);if(i<0)return;
+  shownEvents().forEach(e=>{const i=histIdx(visPts,e);if(i<0)return;
     const px=Math.max(a.left+9,Math.min(a.right-9,x.getPixelForValue(i))),c=(CATS[e.cat]||CATS.macro).color;
     ctx.save();ctx.strokeStyle=c;ctx.setLineDash([4,4]);ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(px,a.top+12);ctx.lineTo(px,a.bottom);ctx.stroke();ctx.setLineDash([]);
@@ -213,7 +236,7 @@ document.getElementById('evCat').addEventListener('click',e=>{
   evCat=b.dataset.c;renderEvents();if(chart)chart.update();
 });
 fetch('events.json',{cache:'no-store'}).then(r=>r.ok?r.json():[]).catch(()=>[])
-  .then(list=>{events=(Array.isArray(list)?list:[]).filter(e=>e&&e.date&&e.title).sort((a,b)=>a.date<b.date?-1:1);renderEvents();if(chart)chart.update();});
+  .then(list=>{events=(Array.isArray(list)?list:[]).filter(e=>e&&e.date&&e.title).sort((a,b)=>a.date<b.date?-1:1);renderEvents();if(chart)chart.update();renderDiscipline();});
 
 let hist=[],chart=null;
 function drawHist(days){
@@ -261,6 +284,45 @@ function renderIndicators(d,prev){
 }
 renderIndicators(null);
 
+// ── 操作紀律參考：把「看到新聞就想動作」換成事先寫好的規則 ──
+let cnn=null;
+const RULES=[
+  {max:25,act:'分批加碼區',tone:'#0d9488',icon:'🟢',how:'市場恐慌、價格常被過度拋售。依事先決定的批次分批買進，不一次全押。'},
+  {max:45,act:'持有，可定期定額',tone:'#0d9488',icon:'🟢',how:'情緒偏悲觀。維持定期定額，不必因為下跌而賣出。'},
+  {max:55,act:'照原計畫持有',tone:'#64748b',icon:'⚪',how:'情緒中性。沒有特別理由就不動作。'},
+  {max:75,act:'持有，不追高',tone:'#b45309',icon:'🟠',how:'情緒偏樂觀。可以續抱，但不因為上漲而加碼。'},
+  {max:101,act:'分批減碼／再平衡區',tone:'#b91c1c',icon:'🔴',how:'市場貪婪、價格可能被推高。可把漲多的部位調回原本配置比例。'},
+];
+function renderDiscipline(){
+  const el=document.getElementById('disc');if(!cnn||!el)return;
+  const f=cnn.fear_and_greed,s=f.score,p=f.previous_close,w=f.previous_1_week;
+  const rule=RULES.find(r=>s<r.max),mom=(cnn.market_momentum_sp500||{}).score,junk=(cnn.junk_bond_demand||{}).score;
+  const d1=Math.round(s)-Math.round(p),dw=Math.round(s)-Math.round(w);
+  let sub=rule.how;
+  if(s<25)sub=(d1<0&&dw<0)?'指數還在往下探：只執行計畫中的一小批，保留現金等情緒止跌。':'指數已從低檔回升：可依計畫執行下一批，但仍分批進行。';
+  const why=[`總分 ${Math.round(s)}（${zone(s).label}），較前一交易日 ${d1>0?'▲':d1<0?'▼':''}${d1?Math.abs(d1):'持平'}，較一週前 ${dw>0?'▲':dw<0?'▼':''}${dw?Math.abs(dw):'持平'}。`];
+  if(typeof mom==='number')why.push(mom<25?'市場動能仍極弱（S&P 500 遠低於 125 日均線），中期趨勢尚未修復。':mom>=55?'市場動能偏強，中期趨勢向上。':'市場動能中等。');
+  if(typeof junk==='number')why.push(junk<25?'垃圾債需求偏低，信用市場仍緊張；債市放心前，反彈較容易失敗。':junk>=45?'垃圾債需求回穩，信用市場沒有明顯壓力。':'信用市場略偏謹慎。');
+  // 冷靜期：單日大幅變動，或近 3 個交易日內有重大事件
+  const recent=hist.length?events.filter(e=>{const i=histIdx(hist,e);return i>=0&&i>=hist.length-3;}):[];
+  const cool=Math.abs(d1)>=8||recent.length>0;
+  const coolMsg=cool?`<div class="disc-cool">⏸ <b>冷靜期</b>：${Math.abs(d1)>=8?`指數單日變動 ${Math.abs(d1)} 點`:''}${Math.abs(d1)>=8&&recent.length?'，且':''}${recent.length?`近 3 個交易日有重大事件（${recent.map(e=>esc(e.title)).join('、')}）`:''}。新聞剛發生時情緒最容易過度反應，建議等 3 個交易日、看指數是否延續，再執行上面的動作。</div>`:'';
+  el.innerHTML=`
+    <div class="disc-main" style="border-left-color:${rule.tone}">
+      <div class="disc-label">依目前情緒，紀律規則對應的動作</div>
+      <div class="disc-act" style="color:${rule.tone}">${rule.icon} ${rule.act}</div>
+      <div class="disc-sub">${sub}</div>
+      <ul class="disc-why">${why.map(x=>`<li>${x}</li>`).join('')}</ul>
+      ${coolMsg}
+    </div>
+    <div class="disc-side">
+      <div class="disc-label">規則表</div>
+      <table class="disc-tbl">${RULES.map((r,i)=>`<tr class="${r===rule?'on':''}"><td>${i?RULES[i-1].max:0}–${Math.min(r.max,100)}</td><td style="color:${r.tone}">${r.icon} ${r.act}</td></tr>`).join('')}</table>
+      <div class="disc-label" style="margin-top:12px">動作前先問自己</div>
+      <ol class="disc-check"><li>這筆錢 3～5 年內用不到嗎？</li><li>動作後，單一持股會不會超過我設定的比例上限？</li><li>這是照事先寫好的批次計畫，還是被今天的新聞推著走？</li></ol>
+    </div>`;
+}
+
 fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
   .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
   .then(d=>{
@@ -278,6 +340,7 @@ fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
     hist=((d.fear_and_greed_historical||{}).data||[]).filter(p=>typeof p.y==='number').sort((a,b)=>a.x-b.x);
     if(hist.length)drawHist(180);
     renderEvents();
+    cnn=d;renderDiscipline();
   })
   .catch(()=>{
     document.getElementById('status').style.display='block';

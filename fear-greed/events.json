@@ -1,21 +1,32 @@
 [
   {
     "date": "2026-11-03",
+    "session": "after",
     "cat": "policy",
     "title": "美國期中選舉，民主黨獲勝",
     "detail": "市場開始擔心民主黨主導的國會與各州加強管制 AI 與資料中心。選後隔天股市先上漲。",
     "sources": [
-      {"name": "NBC News", "url": "https://www.nbcnews.com/business/markets/tech-stocks-plunge-ai-midterms-rcna607650"}
+      {
+        "name": "NBC News",
+        "url": "https://www.nbcnews.com/business/markets/tech-stocks-plunge-ai-midterms-rcna607650"
+      }
     ]
   },
   {
     "date": "2026-11-05",
+    "session": "intraday",
     "cat": "policy",
     "title": "AI 監管疑慮引發科技股重挫",
     "detail": "投資人擔心 AI 管制收緊，Nasdaq 單日跌約 5%，市值蒸發逾 2 兆美元，晶片與 AI 基礎建設股領跌。",
     "sources": [
-      {"name": "CNBC", "url": "https://www.cnbc.com/2026/11/06/ai-data-center-midterms-selloff.html"},
-      {"name": "Al Jazeera", "url": "https://www.aljazeera.com/economy/2026/11/5/ai-stocks-plunge-after-election-driving-down-us-markets"}
+      {
+        "name": "CNBC",
+        "url": "https://www.cnbc.com/2026/11/06/ai-data-center-midterms-selloff.html"
+      },
+      {
+        "name": "Al Jazeera",
+        "url": "https://www.aljazeera.com/economy/2026/11/5/ai-stocks-plunge-after-election-driving-down-us-markets"
+      }
     ]
   },
   {
@@ -24,19 +35,35 @@
     "title": "黃仁勳辭任輝達執行長",
     "detail": "黃仁勳因內部調查與個人關係爭議辭職，財務長 Colette Kress 代理執行長。之後輝達市值一度蒸發約 1.2 兆美元。",
     "sources": [
-      {"name": "NPR", "url": "https://www.npr.org/2026/11/12/nx-s1-6037833/jensen-huang-nvidia-stepped-down"},
-      {"name": "SEC 8-K", "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm"}
+      {
+        "name": "NPR",
+        "url": "https://www.npr.org/2026/11/12/nx-s1-6037833/jensen-huang-nvidia-stepped-down"
+      },
+      {
+        "name": "SEC 8-K",
+        "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm"
+      }
     ]
   },
   {
     "date": "2026-11-23",
+    "session": "pre",
     "cat": "company",
     "title": "輝達恢復黃仁勳執行長職位",
     "detail": "董事會一致通過即刻復職，NVDA 收漲約 31%，是 2003 年以來最大單日漲幅。CNBC 引述消息人士稱，川普的保證是促成復職的關鍵。",
     "sources": [
-      {"name": "NVIDIA 新聞稿", "url": "https://nvidianews.nvidia.com/news/nvidia-board-reinstates-jensen-huang-as-president-ceo-and-board-director"},
-      {"name": "CNBC", "url": "https://www.cnbc.com/2026/11/23/nvidia-jensen-huang-ceo.html"},
-      {"name": "CNBC（川普角色）", "url": "https://www.cnbc.com/2026/11/23/trump-nvidia-jensen-huang.html"}
+      {
+        "name": "NVIDIA 新聞稿",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-board-reinstates-jensen-huang-as-president-ceo-and-board-director"
+      },
+      {
+        "name": "CNBC",
+        "url": "https://www.cnbc.com/2026/11/23/nvidia-jensen-huang-ceo.html"
+      },
+      {
+        "name": "CNBC（川普角色）",
+        "url": "https://www.cnbc.com/2026/11/23/trump-nvidia-jensen-huang.html"
+      }
     ]
   }
 ]
