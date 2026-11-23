@@ -49,6 +49,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .post-summary{font-size:.78rem;color:#64748b;line-height:1.5}
 .post-meta{margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9}
 .meta-item{font-size:.72rem;color:#94a3b8}
+.fg-row{padding:0 32px 24px}
+.fg-card{background:#fff;border-radius:12px;padding:20px 24px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:grid;grid-template-columns:260px 1fr;gap:24px;align-items:center}
+.fg-gauge{text-align:center}
+.fg-gauge svg{width:100%;max-width:260px;height:auto;display:block;margin:0 auto}
+.fg-score{font-size:2.2rem;font-weight:800;margin-top:-6px}
+.fg-rating{font-size:.9rem;font-weight:700}
+.fg-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.fg-head a{font-size:.75rem;color:#0f3460}
+.fg-compare{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.fg-cmp{background:#f8fafc;border-radius:8px;padding:10px 12px}
+.fg-cmp-label{font-size:.72rem;color:#64748b}
+.fg-cmp-val{font-size:1.1rem;font-weight:700;margin-top:2px}
+.fg-cmp-rate{font-size:.72rem}
+.fg-note{font-size:.75rem;color:#94a3b8;margin-top:12px;line-height:1.5}
+@media (max-width:760px){.fg-row{padding:0 16px 16px}.fg-card{grid-template-columns:1fr}.fg-compare{grid-template-columns:repeat(2,1fr)}}
 .footer{background:#1a1a2e;color:rgba(255,255,255,.5);text-align:center;padding:16px;font-size:.78rem}
 </style>
 </head>
@@ -78,6 +93,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="kpi-card pos"><div class="kpi-label">✅ 正面</div><div class="kpi-value" style="color:#10b981">10</div><div class="kpi-sub">45% 正面聲量</div></div>
   <div class="kpi-card neg"><div class="kpi-label">❌ 負面</div><div class="kpi-value" style="color:#ef4444">4</div><div class="kpi-sub">18% 負面聲量</div></div>
   <div class="kpi-card neu"><div class="kpi-label">🟡 中立</div><div class="kpi-value" style="color:#f59e0b">8</div><div class="kpi-sub">37% 中立聲量</div></div>
+</div>
+<div class="fg-row">
+  <div class="fg-card" id="fgCard">
+    <div class="fg-gauge">
+      <svg id="fgGauge" viewBox="0 0 200 115" role="img" aria-label="恐懼與貪婪指數儀表"></svg>
+      <div class="fg-score" id="fgScore">--</div>
+      <div class="fg-rating" id="fgRating">載入中…</div>
+    </div>
+    <div>
+      <div class="fg-head">
+        <div class="chart-title" style="margin:0">😱🤑 美股恐懼與貪婪指數（CNN Fear &amp; Greed）</div>
+        <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noopener">查看 CNN 原始頁面 →</a>
+      </div>
+      <div class="fg-compare">
+        <div class="fg-cmp"><div class="fg-cmp-label">前一交易日</div><div class="fg-cmp-val" id="fgPrev">--</div><div class="fg-cmp-rate" id="fgPrevR"></div></div>
+        <div class="fg-cmp"><div class="fg-cmp-label">1 週前</div><div class="fg-cmp-val" id="fgWeek">--</div><div class="fg-cmp-rate" id="fgWeekR"></div></div>
+        <div class="fg-cmp"><div class="fg-cmp-label">1 個月前</div><div class="fg-cmp-val" id="fgMonth">--</div><div class="fg-cmp-rate" id="fgMonthR"></div></div>
+        <div class="fg-cmp"><div class="fg-cmp-label">1 年前</div><div class="fg-cmp-val" id="fgYear">--</div><div class="fg-cmp-rate" id="fgYearR"></div></div>
+      </div>
+      <div class="fg-note" id="fgNote">0–25 極度恐懼・25–45 恐懼・45–55 中性・55–75 貪婪・75–100 極度貪婪。由市場動能、股價強度、股價廣度、賣權／買權比、VIX 波動、避險需求、垃圾債需求 7 項指標組成，反映美股短期投資情緒。</div>
+    </div>
+  </div>
 </div>
 <div class="charts-row">
   <div class="chart-card"><div class="chart-title">📈 近6個月情感趨勢</div><div class="chart-wrap"><canvas id="trendChart"></canvas></div></div>
@@ -161,6 +198,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 new Chart(document.getElementById('trendChart'),{type:'bar',data:{labels:['2025年11月','2025年12月','2026年1月','2026年2月','2026年3月','2026年4月'],datasets:[{label:'✅ 正面',data:[2,1,2,1,2,3],backgroundColor:'#10b981',borderRadius:4},{label:'❌ 負面',data:[0,1,0,2,1,1],backgroundColor:'#ef4444',borderRadius:4},{label:'🟡 中立',data:[1,2,1,1,1,2],backgroundColor:'#f59e0b',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{stepSize:1}}}}});
 new Chart(document.getElementById('pieChart'),{type:'doughnut',data:{labels:['✅ 正面 45%','❌ 負面 18%','🟡 中立 37%'],datasets:[{data:[10,4,8],backgroundColor:['#10b981','#ef4444','#f59e0b'],borderWidth:3,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{padding:10,font:{size:11}}}}}});
 new Chart(document.getElementById('platformChart'),{type:'bar',data:{labels:['Threads','PTT','Dcard','新聞媒體'],datasets:[{label:'貼文數',data:[4,4,7,7],backgroundColor:['#111','#10b981','#86198f','#0369a1'],borderRadius:6}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f1f5f9'}},y:{grid:{display:false}}}}});
+// ── 恐懼與貪婪指數 ──
+const FG_ZONES=[{max:25,label:'極度恐懼',color:'#b91c1c'},{max:45,label:'恐懼',color:'#f97316'},{max:55,label:'中性',color:'#eab308'},{max:75,label:'貪婪',color:'#22c55e'},{max:100,label:'極度貪婪',color:'#15803d'}];
+function fgZone(v){return FG_ZONES.find(z=>v<z.max)||FG_ZONES.at(-1);}
+function fgPt(v,r){const a=Math.PI*(1-v/100);return[100+r*Math.cos(a),105-r*Math.sin(a)];}
+function fgDrawGauge(v){
+  const svg=document.getElementById('fgGauge');let s='',from=0;
+  FG_ZONES.forEach(z=>{const[x1,y1]=fgPt(from,85),[x2,y2]=fgPt(z.max,85);
+    s+=`<path d="M${x1} ${y1} A85 85 0 0 1 ${x2} ${y2}" stroke="${z.color}" stroke-width="18" fill="none"/>`;from=z.max;});
+  if(v!=null){const[nx,ny]=fgPt(v,70);
+    s+=`<line x1="100" y1="105" x2="${nx}" y2="${ny}" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/><circle cx="100" cy="105" r="7" fill="#1e293b"/>`;}
+  s+='<text x="10" y="114" font-size="9" fill="#64748b">0</text><text x="183" y="114" font-size="9" fill="#64748b">100</text>';
+  svg.innerHTML=s;
+}
+function fgSet(id,v){const z=fgZone(v);const e=document.getElementById(id);e.textContent=Math.round(v);e.style.color=z.color;
+  const r=document.getElementById(id+'R');r.textContent=z.label;r.style.color=z.color;}
+fgDrawGauge(null);
+fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
+  .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+  .then(d=>{const f=d.fear_and_greed;const v=f.score,z=fgZone(v);
+    fgDrawGauge(v);
+    const sc=document.getElementById('fgScore');sc.textContent=Math.round(v);sc.style.color=z.color;
+    const rt=document.getElementById('fgRating');rt.textContent=z.label;rt.style.color=z.color;
+    fgSet('fgPrev',f.previous_close);fgSet('fgWeek',f.previous_1_week);fgSet('fgMonth',f.previous_1_month);fgSet('fgYear',f.previous_1_year);
+    const t=new Date(f.timestamp);
+    document.getElementById('fgNote').insertAdjacentHTML('afterbegin',`<strong>資料時間：${t.toLocaleString('zh-TW',{hour12:false})}</strong><br>`);})
+  .catch(()=>{document.getElementById('fgRating').textContent='暫時無法取得即時資料';
+    document.getElementById('fgRating').style.color='#94a3b8';});
 let cP='all',cS='all';
 function filterPosts(type,value,btn){
   const all=document.querySelectorAll('.filter-btn');
