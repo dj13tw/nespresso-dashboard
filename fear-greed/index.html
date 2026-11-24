@@ -67,6 +67,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
 .disc-tbl tr.on{background:var(--card);font-weight:700}
 .disc-check{font-size:.78rem;color:var(--muted);line-height:1.7;margin-left:18px}
 @media (max-width:820px){.disc{grid-template-columns:1fr}}
+.tw-card{margin-top:16px}
+.tw-upd{font-size:.72rem;color:var(--faint)}
+.tw-sum{font-size:.88rem;line-height:1.7;margin-bottom:12px}
+.tw-sum b{font-size:1.05rem}
+.tw-val{font-size:1.3rem;font-weight:800}
+.tw-unit{font-size:.75rem;color:var(--muted);margin-left:4px;font-weight:600}
+.tw-sub{font-size:.75rem;color:var(--muted);margin-top:2px}
+.spark{display:block;width:100%;height:32px;margin-top:8px}
 .ind-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ind{background:var(--soft);border-radius:10px;padding:14px 16px;border-left:4px solid var(--line)}
 .ind-name{font-size:.85rem;font-weight:700}
@@ -147,6 +155,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
     <div class="title">🧩 7 項組成指標</div>
     <div class="ind-note">「較前一日」是和這台裝置上次記錄到的交易日比較；▲ 代表往貪婪方向、▼ 代表往恐懼方向。</div>
     <div class="ind-grid" id="indicators"></div>
+  </div>
+
+  <div class="card tw-card">
+    <div class="hist-head">
+      <div class="title" style="margin:0">🇹🇼 台股情緒</div>
+      <div class="tw-upd" id="twUpd">載入中…</div>
+    </div>
+    <div class="tw-sum" id="twSum"></div>
+    <div class="ind-grid" id="twGrid"></div>
+    <div class="ind-note" style="margin:12px 0 0">資料來源：臺灣證券交易所、臺灣期貨交易所公開資料。證交所資料在開頁時即時讀取；期交所資料每天早上自動更新一次。各項「偏多／偏空」是市場常見的粗略解讀，僅供參考。台股的台指 VIX 目前沒有開放資料可讀取，所以沒有列入。</div>
   </div>
 </div>
 
@@ -284,6 +302,96 @@ function renderIndicators(d,prev){
 }
 renderIndicators(null);
 
+// ── 台股情緒 ──
+const SIG={bear:{label:'偏空',color:'#dc2626'},neutral:{label:'中性',color:'#64748b'},bull:{label:'偏多',color:'#16a34a'}};
+const n0=s=>{const v=parseFloat(String(s).replace(/,/g,''));return isNaN(v)?null:v;};
+const iso8=s=>`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+const md=k=>k.slice(5).replace('-','/');
+const sorted=o=>Object.keys(o||{}).sort().map(k=>[k,o[k]]);
+const fmtN=(v,dg=0)=>v==null?'--':v.toLocaleString('zh-TW',{minimumFractionDigits:dg,maximumFractionDigits:dg});
+const sgn=(v,dg=0)=>v==null?'--':(v>0?'+':'')+fmtN(v,dg);
+function spark(vals,color){
+  vals=vals.filter(v=>v!=null);if(vals.length<2)return '';
+  const mn=Math.min(...vals),mx=Math.max(...vals),r=mx-mn||1;
+  const pts=vals.map((v,i)=>`${(i/(vals.length-1)*100).toFixed(1)},${(30-(v-mn)/r*28).toFixed(1)}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function twCard(name,desc,val,unit,sub,sig,why,series){
+  const s=SIG[sig];
+  return `<div class="ind" style="border-left-color:${s.color}">
+    <div class="ind-name">${name}</div><div class="ind-desc">${desc}</div>
+    <div class="ind-row"><span><span class="tw-val">${val}</span><span class="tw-unit">${unit}</span></span><span class="ind-rate" style="color:${s.color}">${s.label}</span></div>
+    <div class="tw-sub">${sub}</div><div class="tw-sub" style="color:${s.color}">${why}</div>${spark(series,s.color)}</div>`;
+}
+let twData=null;
+function renderTW(){
+  const d=twData;if(!d)return;const cards=[],sigs=[];
+  // 加權指數 vs 20 日均線
+  const tx=sorted(d.taiex);
+  if(tx.length){const [k,last]=tx.at(-1),closes=tx.map(x=>x[1].close);
+    const ma=closes.length>=20?closes.slice(-20).reduce((a,b)=>a+b,0)/20:null,dev=ma?(last.close/ma-1)*100:null;
+    const pct=last.change!=null?last.change/(last.close-last.change)*100:null;
+    const sig=dev==null?'neutral':dev<-3?'bear':dev>3?'bull':'neutral';sigs.push(sig);
+    cards.push(twCard('加權指數','和 20 日均線比較，類似 CNN 的「市場動能」。',fmtN(last.close,0),'',
+      `${md(k)} ${sgn(last.change,0)} 點（${sgn(pct,2)}%）`,sig,dev==null?'資料累積中':`${dev<0?'低於':'高於'} 20 日均線 ${Math.abs(dev).toFixed(1)}%`,closes.slice(-30)));}
+  // 外資現貨買賣超
+  const ff=sorted(d.foreign_flow);
+  if(ff.length){const [k,v]=ff.at(-1),last5=ff.slice(-5),sum=last5.reduce((a,x)=>a+x[1],0);
+    let run=0;for(let i=ff.length-1;i>=0&&Math.sign(ff[i][1])===Math.sign(v);i--)run++;
+    const sig=v<0&&sum<0?'bear':v>0&&sum>0?'bull':'neutral';sigs.push(sig);
+    cards.push(twCard('外資現貨買賣超','外資在集中市場買賣股票的淨額，賣超代表資金撤出。',sgn(v/1e8,1),'億',
+      `${md(k)}${last5.length>1?`・近 ${last5.length} 日累計 ${sgn(sum/1e8,0)} 億`:''}`,sig,
+      ff.length>1?`連續 ${run} 日${v<0?'賣超':'買超'}`:(v<0?'外資賣超':'外資買超'),ff.map(x=>x[1])));}
+  // 外資台指期淨未平倉
+  const oi=sorted(d.foreign_futures_oi);
+  if(oi.length){const [k,v]=oi.at(-1),prev=oi.length>1?oi.at(-2)[1]:null;
+    const sig=v< -30000?'bear':v>0?'bull':'neutral';sigs.push(sig);
+    cards.push(twCard('外資台指期淨未平倉','外資在臺股期貨的多空部位，負數代表淨空單，常用來看外資避險或看空的程度。',sgn(v,0),'口',
+      `${md(k)}${prev!=null?`・較前日 ${sgn(v-prev,0)} 口`:''}`,sig,v< -50000?'淨空單很大，外資避險或看空明顯':v< -30000?'淨空單偏多':v>0?'外資淨多單':'淨空單不大',oi.map(x=>x[1])));}
+  // 融資餘額
+  const mg=sorted(d.margin);
+  if(mg.length){const [k,v]=mg.at(-1),prev=mg.length>1?mg.at(-2)[1]:(d.margin_prev??null),chg=prev!=null?v-prev:null;
+    const falling=tx.length&&tx.at(-1)[1].change<0;
+    const sig=chg!=null&&chg>0&&falling?'bear':'neutral';sigs.push(sig);
+    cards.push(twCard('融資餘額','散戶借錢買股的總額。下跌時融資還增加，代表散戶逆勢攤平，後續賣壓較大。',fmtN(v/1e5,0),'億',
+      `${md(k)}${chg!=null?`・較前日 ${sgn(chg/1e5,1)} 億`:''}`,sig,
+      chg==null?'資料累積中':chg>0?(falling?'指數下跌但融資增加，籌碼較亂':'融資增加'):'融資減少，籌碼逐步沉澱',mg.map(x=>x[1])));}
+  // 臺指選擇權 P/C 比（未平倉）
+  const pc=sorted(d.put_call);
+  if(pc.length){const [k,v]=pc.at(-1),ago=pc.length>5?pc.at(-6)[1].oi:null;
+    const sig=v.oi<80?'bear':v.oi>100?'bull':'neutral';sigs.push(sig);
+    cards.push(twCard('臺指選擇權 P/C 比','未平倉 Put／Call 比。台股常見解讀：高於 100% 代表下方支撐強（偏多），低於 80% 偏空。',fmtN(v.oi,1),'%',
+      `${md(k)}・成交量 P/C ${fmtN(v.vol,1)}%${ago!=null?`・較 5 日前 ${sgn(v.oi-ago,1)}`:''}`,sig,
+      v.oi<80?'支撐偏弱':v.oi>100?'支撐較強':'中性區間',pc.map(x=>x[1].oi)));}
+  document.getElementById('twGrid').innerHTML=cards.join('')||'<div class="ev-empty">暫時沒有台股資料。</div>';
+  const bears=sigs.filter(s=>s==='bear').length,bulls=sigs.filter(s=>s==='bull').length,tot=sigs.length;
+  const mood=bears>=Math.ceil(tot*0.6)?['偏恐懼','#dc2626']:bulls>=Math.ceil(tot*0.6)?['偏樂觀','#16a34a']:['分歧','#64748b'];
+  const us=cnn?`美股前一晚 CNN 恐懼貪婪指數 <b style="color:${zone(cnn.fear_and_greed.score).color}">${Math.round(cnn.fear_and_greed.score)}（${zone(cnn.fear_and_greed.score).label}）</b>。`:'';
+  document.getElementById('twSum').innerHTML=tot?`台股情緒 <b style="color:${mood[1]}">${mood[0]}</b>：${tot} 項中 ${bears} 項偏空、${bulls} 項偏多。${us}台股開盤在美股收盤之後，前一晚的美股情緒通常會先反映在台股開盤。`:'';
+  document.getElementById('twUpd').textContent=`${d.live?'證交所資料已即時更新・':''}期交所資料更新：${d.updated||'--'}`;
+}
+async function loadTW(){
+  let d={};
+  try{const r=await fetch('tw.json',{cache:'no-store'});if(r.ok)d=await r.json();}catch(e){}
+  ['taiex','foreign_flow','margin','put_call','foreign_futures_oi'].forEach(k=>d[k]=d[k]||{});
+  twData=d;renderTW();
+  // 證交所允許網頁直接讀取：補上最新一日。請求之間稍作間隔，避免被證交所限流
+  const T='https://www.twse.com.tw/rwd/zh',wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const get=async u=>{try{const r=await fetch(u);if(!r.ok)return null;const j=await r.json();return j.stat==='OK'?j:null;}catch(e){return null;}};
+  const ym=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}).slice(0,7).replace('-','');
+  let live=false,j=await get(`${T}/afterTrading/FMTQIK?response=json&date=${ym}01`);
+  if(j){live=true;j.data.forEach(r=>{const [y,m,dd]=r[0].split('/');d.taiex[`${+y+1911}-${m}-${dd}`]={close:n0(r[4]),change:n0(r[5])};});}
+  await wait(1200);
+  j=await get(`${T}/fund/BFI82U?response=json`);
+  if(j){live=true;const row=j.data.find(r=>r[0].startsWith('外資及陸資'));if(row)d.foreign_flow[iso8(j.date)]=n0(row[3]);}
+  await wait(1200);
+  j=await get(`${T}/marginTrading/MI_MARGN?response=json&selectType=MS`);
+  if(j&&j.tables&&j.tables[0]){live=true;const row=j.tables[0].data.find(r=>r[0].startsWith('融資金額'));
+    if(row){const k=iso8(j.date);if(Object.keys(d.margin).filter(x=>x<k).length===0)d.margin_prev=n0(row[4]);d.margin[k]=n0(row[5]);}}
+  d.live=live;renderTW();
+}
+loadTW();
+
 // ── 操作紀律參考：把「看到新聞就想動作」換成事先寫好的規則 ──
 let cnn=null;
 const RULES=[
@@ -340,7 +448,7 @@ fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
     hist=((d.fear_and_greed_historical||{}).data||[]).filter(p=>typeof p.y==='number').sort((a,b)=>a.x-b.x);
     if(hist.length)drawHist(180);
     renderEvents();
-    cnn=d;renderDiscipline();
+    cnn=d;renderDiscipline();renderTW();
   })
   .catch(()=>{
     document.getElementById('status').style.display='block';
