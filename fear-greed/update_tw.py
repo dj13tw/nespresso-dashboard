@@ -7,6 +7,8 @@
 - 證交所 FMTQIK：每日加權指數收盤與漲跌（本月與上月）
 - 證交所 BFI82U：外資及陸資買賣超（最新一日，每天累積；另取本月累計）
 - 證交所 MI_MARGN：融資金額餘額（最新一日，每天累積）
+- 證交所 STOCK_DAY：台積電（2330）每日收盤
+- FRED（美國聖路易聯準銀行）：S&P 500、Nasdaq-100 每日收盤，用來和 CNN 恐懼貪婪指數對照
 
 期交所的資料不允許網頁跨網域讀取，所以由這支程式每天抓一次、存成檔案。
 證交所資料網頁可以直接讀，dashboard 會優先即時讀取，這裡的紀錄用來累積歷史與備援。
@@ -17,6 +19,7 @@
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -26,7 +29,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tw.json")
 TWSE = "https://www.twse.com.tw/rwd/zh"
 TAIFEX = "https://openapi.taifex.com.tw/v1"
 TPE = timezone(timedelta(hours=8))
-KEEP_DAYS = 60  # 每個序列保留的交易日數
+KEEP_DAYS = 130  # 每個序列保留的交易日數（約 6 個月）
 DELAY = 5       # 證交所請求間隔（秒）
 
 _last_twse = [0.0]
@@ -62,8 +65,9 @@ def safe(label, fn):
 
 
 def num(s):
-    s = str(s).replace(",", "").strip()
-    return float(s) if s not in ("", "--", "-") else None
+    # 證交所數字可能帶千分位、正負號或註記字元（例如除權息日的 "X0.00"）
+    m = re.search(r"-?\d+(?:\.\d+)?", str(s).replace(",", ""))
+    return float(m.group()) if m else None
 
 
 def iso8(s):  # "20261123" -> "2026-11-23"
@@ -88,15 +92,49 @@ def futures_oi():
     return out
 
 
-def taiex():
-    this = datetime.now(TPE).date().replace(day=1)
-    last = (this - timedelta(days=1)).replace(day=1)
+def month_starts(n):
+    """最近 n 個月的每月 1 日（由舊到新）。"""
+    firsts = [datetime.now(TPE).date().replace(day=1)]
+    for _ in range(n - 1):
+        firsts.insert(0, (firsts[0] - timedelta(days=1)).replace(day=1))
+    return firsts
+
+
+def taiex(months):
     rows = {}
-    for first in (last, this):
+    for first in month_starts(months):
         d = get_json(f"{TWSE}/afterTrading/FMTQIK?response=json&date={first:%Y%m%d}", twse=True)
         for r in d.get("data", []) if d.get("stat") == "OK" else []:
             rows[roc_to_iso(r[0])] = {"close": num(r[4]), "change": num(r[5])}
     return rows
+
+
+def tsmc(months):
+    rows = {}
+    for first in month_starts(months):
+        d = get_json(f"{TWSE}/afterTrading/STOCK_DAY?response=json&date={first:%Y%m%d}&stockNo=2330", twse=True)
+        for r in d.get("data", []) if d.get("stat") == "OK" else []:
+            rows[roc_to_iso(r[0])] = {"close": num(r[6]), "change": num(r[7])}
+    return rows
+
+
+def fred(series_id):
+    start = (datetime.now(TPE).date() - timedelta(days=200)).isoformat()
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start}"
+    for i in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                lines = r.read().decode("utf-8").strip().splitlines()[1:]
+            out = {}
+            for line in lines:
+                day, val = line.split(",")
+                if val not in ("", "."):
+                    out[day] = float(val)
+            return out
+        except Exception as e:  # noqa: BLE001
+            print(f"  重試 {i + 1}/3：{url}（{e}）", file=sys.stderr)
+            time.sleep(8 * (i + 1))
+    raise RuntimeError(f"無法取得 {url}")
 
 
 def foreign_row(d):
@@ -109,11 +147,6 @@ def foreign_row(d):
 def foreign_day():
     d = get_json(f"{TWSE}/fund/BFI82U?response=json", twse=True)
     return {iso8(d["date"]): foreign_row(d)} if d.get("stat") == "OK" else {}
-
-
-def foreign_month():
-    d = get_json(f"{TWSE}/fund/BFI82U?response=json&type=month", twse=True)
-    return {"through": iso8(d["date"]), "value": foreign_row(d)} if d.get("stat") == "OK" else None
 
 
 def margin():
@@ -140,16 +173,22 @@ def main():
 
     pc = safe("期交所 Put/Call 比", put_call)
     oi = safe("期交所 外資期貨未平倉", futures_oi)
-    tx = safe("證交所 加權指數", taiex)
+    # 第一次執行時補足約 6 個月；之後只抓本月與上月
+    months = lambda key: 2 if len(old.get(key, {})) >= 100 else 6  # noqa: E731
+    tx = safe("證交所 加權指數", lambda: taiex(months("taiex")))
+    ts = safe("證交所 台積電", lambda: tsmc(months("tsmc")))
     fd = safe("證交所 外資買賣超", foreign_day)
-    fm = safe("證交所 外資本月累計", foreign_month)
     mg = safe("證交所 融資餘額", margin)
+    sp = safe("FRED S&P 500", lambda: fred("SP500"))
+    nd = safe("FRED Nasdaq-100", lambda: fred("NASDAQ100"))
 
     out = {
         "updated": datetime.now(TPE).strftime("%Y-%m-%d %H:%M"),
         "taiex": merged("taiex", tx),                      # 加權指數收盤、漲跌點數
         "foreign_flow": merged("foreign_flow", fd),        # 外資現貨買賣超（元）
-        "foreign_flow_month": fm or old.get("foreign_flow_month"),
+        "tsmc": merged("tsmc", ts),                        # 台積電收盤、漲跌（元）
+        "sp500": merged("sp500", sp),                      # S&P 500 收盤（美東日期）
+        "ndx": merged("ndx", nd),                          # Nasdaq-100 收盤（美東日期）
         "margin": merged("margin", mg),                    # 融資餘額（仟元）
         "margin_prev": (mg or {}).get("_prev", old.get("margin_prev")),
         "put_call": merged("put_call", pc),                # 臺指選擇權 P/C 比（%）
@@ -160,7 +199,7 @@ def main():
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
     print(f"完成：{OUT}")
-    for k in ("taiex", "foreign_flow", "margin", "put_call", "foreign_futures_oi"):
+    for k in ("taiex", "tsmc", "sp500", "ndx", "foreign_flow", "margin", "put_call", "foreign_futures_oi"):
         print(f"  {k}: {len(out[k])} 日")
     if errors:
         print("  失敗：" + "；".join(errors))

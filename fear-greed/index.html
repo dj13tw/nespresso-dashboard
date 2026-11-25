@@ -68,6 +68,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
 .disc-check{font-size:.78rem;color:var(--muted);line-height:1.7;margin-left:18px}
 @media (max-width:820px){.disc{grid-template-columns:1fr}}
 .tw-card{margin-top:16px}
+.mk-card{margin-bottom:16px}
+.mk-tbl-wrap{overflow-x:auto;margin-bottom:14px}
+.mk-tbl{width:100%;border-collapse:collapse;font-size:.82rem;min-width:540px}
+.mk-tbl th{font-size:.72rem;color:var(--muted);font-weight:600;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)}
+.mk-tbl th:first-child{text-align:left}
+.mk-tbl td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.mk-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.mk-note{font-size:.7rem;color:var(--faint);font-weight:400}
+.mk-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.mk-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.mk-sub{font-size:.8rem;font-weight:700;margin-bottom:6px}
+.mk-wrap{height:240px}
+@media (max-width:820px){.mk-charts{grid-template-columns:1fr}}
 .tw-upd{font-size:.72rem;color:var(--faint)}
 .tw-sum{font-size:.88rem;line-height:1.7;margin-bottom:12px}
 .tw-sum b{font-size:1.05rem}
@@ -149,6 +162,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans
     </div>
     <div class="ev-list" id="evList"><div class="ev-empty">載入中…</div></div>
     <div class="ind-note" style="margin:10px 0 0">事件依新聞報導整理；指數變化只呈現同一期間的情緒變動，不代表事件就是唯一原因。</div>
+  </div>
+
+  <div class="card mk-card">
+    <div class="hist-head">
+      <div class="title" style="margin:0">📊 大盤與科技股對照</div>
+      <div class="rng" id="mkRng"><button data-d="30">1 月</button><button data-d="90" class="active">3 月</button><button data-d="180">6 月</button></div>
+    </div>
+    <div class="mk-tbl-wrap"><table class="mk-tbl" id="mkTbl"><tr><td class="ev-empty">載入中…</td></tr></table></div>
+    <div class="mk-charts">
+      <div><div class="mk-sub">🇺🇸 美股：指數漲跌幅 vs CNN 恐懼貪婪指數</div><div class="chart-wrap mk-wrap"><canvas id="mkUS"></canvas></div></div>
+      <div><div class="mk-sub">🇹🇼 台股：指數漲跌幅 vs CNN 恐懼貪婪指數</div><div class="chart-wrap mk-wrap"><canvas id="mkTW"></canvas></div></div>
+    </div>
+    <div class="ind-note" style="margin:10px 0 0">實線是各指數從區間第一天起算的漲跌幅（左軸 %），灰色虛線是 CNN 恐懼貪婪指數（右軸 0–100）。CNN 指數依美東日期；台股要到隔天才反映前一晚的美股情緒。資料來源：FRED（S&amp;P 500、Nasdaq-100）、臺灣證券交易所（加權指數、台積電）。</div>
   </div>
 
   <div class="card">
@@ -369,6 +395,7 @@ function renderTW(){
   const us=cnn?`美股前一晚 CNN 恐懼貪婪指數 <b style="color:${zone(cnn.fear_and_greed.score).color}">${Math.round(cnn.fear_and_greed.score)}（${zone(cnn.fear_and_greed.score).label}）</b>。`:'';
   document.getElementById('twSum').innerHTML=tot?`台股情緒 <b style="color:${mood[1]}">${mood[0]}</b>：${tot} 項中 ${bears} 項偏空、${bulls} 項偏多。${us}台股開盤在美股收盤之後，前一晚的美股情緒通常會先反映在台股開盤。`:'';
   document.getElementById('twUpd').textContent=`${d.live?'證交所資料已即時更新・':''}期交所資料更新：${d.updated||'--'}`;
+  renderMarkets();
 }
 async function loadTW(){
   let d={};
@@ -388,9 +415,56 @@ async function loadTW(){
   j=await get(`${T}/marginTrading/MI_MARGN?response=json&selectType=MS`);
   if(j&&j.tables&&j.tables[0]){live=true;const row=j.tables[0].data.find(r=>r[0].startsWith('融資金額'));
     if(row){const k=iso8(j.date);if(Object.keys(d.margin).filter(x=>x<k).length===0)d.margin_prev=n0(row[4]);d.margin[k]=n0(row[5]);}}
+  await wait(1200);
+  j=await get(`${T}/afterTrading/STOCK_DAY?response=json&date=${ym}01&stockNo=2330`);
+  if(j){live=true;d.tsmc=d.tsmc||{};j.data.forEach(r=>{const [y,m,dd]=r[0].split('/');d.tsmc[`${+y+1911}-${m}-${dd}`]={close:n0(r[6]),change:n0(r[7])};});}
   d.live=live;renderTW();
 }
 loadTW();
+
+// ── 大盤與科技股對照 ──
+const MK=[
+  {k:'sp500',name:'S&P 500',note:'美股大盤',mkt:'us',color:'#2563eb'},
+  {k:'ndx',name:'Nasdaq-100',note:'美股科技',mkt:'us',color:'#7c3aed'},
+  {k:'taiex',name:'加權指數',note:'台股大盤',mkt:'tw',color:'#0891b2'},
+  {k:'tsmc',name:'台積電 2330',note:'台股科技龍頭',mkt:'tw',color:'#db2777'},
+];
+let mkDays=90;const mkCharts={};
+const mkSeries=k=>sorted((twData||{})[k]).map(([d,v])=>[d,typeof v==='object'&&v?v.close:v]).filter(x=>x[1]!=null);
+const pctBack=(s,n)=>s.length>n?(s.at(-1)[1]/s.at(-1-n)[1]-1)*100:null;
+const arrow=v=>v==null?'--':`${v>0?'▲':v<0?'▼':''}${Math.abs(v).toFixed(1)}%`;
+function renderMarkets(){
+  if(!twData)return;
+  const rows=MK.map(m=>{const s=mkSeries(m.k);if(!s.length)return '';
+    const [day,last]=s.at(-1),win=s.slice(-63),hi=win.reduce((a,b)=>b[1]>a[1]?b:a,win[0]),dd=(last/hi[1]-1)*100;
+    return `<tr><td><span class="mk-dot" style="background:${m.color}"></span><b>${m.name}</b><div class="mk-note">${m.note}・${md(day)}</div></td>
+      <td class="num">${fmtN(last,last<10000?2:0)}</td><td class="num">${arrow(pctBack(s,1))}</td><td class="num">${arrow(pctBack(s,5))}</td><td class="num">${arrow(pctBack(s,21))}</td>
+      <td class="num"><b>${arrow(dd)}</b><div class="mk-note">高點 ${md(hi[0])}</div></td></tr>`;}).join('');
+  document.getElementById('mkTbl').innerHTML=rows?`<tr><th>指數</th><th>最新</th><th>1 日</th><th>1 週</th><th>1 個月</th><th>距 3 個月高點</th></tr>${rows}`:'<tr><td class="ev-empty">暫時沒有指數資料。</td></tr>';
+  const cutISO=new Date(Date.now()-mkDays*864e5).toISOString().slice(0,10);
+  const fg={};hist.forEach(p=>fg[utcDay(p.x)]=Math.round(p.y*10)/10);
+  const dark=matchMedia('(prefers-color-scheme:dark)').matches,grid=dark?'#1f2937':'#f1f5f9',tick=dark?'#9ca3af':'#64748b';
+  [['us','mkUS'],['tw','mkTW']].forEach(([mkt,id])=>{
+    const list=MK.filter(m=>m.mkt===mkt).map(m=>({...m,s:mkSeries(m.k).filter(x=>x[0]>=cutISO)})).filter(m=>m.s.length>1);
+    const labels=[...new Set(list.flatMap(m=>m.s.map(x=>x[0])))].sort();
+    const sets=list.map(m=>{const base=m.s[0][1],mp=Object.fromEntries(m.s);
+      return {label:m.name,data:labels.map(d=>mp[d]!=null?Math.round((mp[d]/base-1)*1000)/10:null),borderColor:m.color,backgroundColor:m.color,borderWidth:2,pointRadius:0,tension:.2,spanGaps:true,yAxisID:'y'};});
+    if(hist.length)sets.push({label:'CNN 恐懼貪婪指數',data:labels.map(d=>fg[d]??null),borderColor:'#94a3b8',backgroundColor:'#94a3b8',borderDash:[5,4],borderWidth:1.5,pointRadius:0,spanGaps:true,yAxisID:'y2'});
+    if(mkCharts[id])mkCharts[id].destroy();
+    mkCharts[id]=new Chart(document.getElementById(id),{type:'line',data:{labels:labels.map(d=>d.slice(5).replace('-','/')),datasets:sets},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11},color:tick}},
+          tooltip:{callbacks:{label:c=>c.parsed.y==null?null:c.dataset.yAxisID==='y2'?`CNN 指數 ${c.parsed.y}（${zone(c.parsed.y).label}）`:`${c.dataset.label} ${c.parsed.y>0?'+':''}${c.parsed.y}%`}}},
+        scales:{y:{position:'left',ticks:{callback:v=>v+'%',color:tick},grid:{color:grid}},
+          y2:{position:'right',min:0,max:100,ticks:{stepSize:25,color:tick},grid:{display:false}},
+          x:{ticks:{maxTicksLimit:7,color:tick},grid:{display:false}}}}});
+  });
+}
+document.getElementById('mkRng').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#mkRng button').forEach(x=>x.classList.toggle('active',x===b));
+  mkDays=+b.dataset.d;renderMarkets();
+});
 
 // ── 操作紀律參考：把「看到新聞就想動作」換成事先寫好的規則 ──
 let cnn=null;
