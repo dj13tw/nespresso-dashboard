@@ -65,5 +65,39 @@
         "url": "https://www.cnbc.com/2026/11/23/trump-nvidia-jensen-huang.html"
       }
     ]
+  },
+  {
+    "date": "2026-11-24",
+    "session": "intraday",
+    "cat": "company",
+    "title": "輝達復職漲勢反轉",
+    "detail": "復職行情隔天，輝達下跌約 5.9%，Anthropic 跌破 IPO 價，Nasdaq-100 收跌約 2%。",
+    "sources": [
+      {
+        "name": "CNBC",
+        "url": "https://www.cnbc.com/2026/11/23/stock-market-today-live-updates.html"
+      },
+      {
+        "name": "TradingView／Benzinga",
+        "url": "https://www.tradingview.com/news/benzinga:d99c41da8094b:0-nasdaq-100-drops-2-5-on-ai-credit-fears-nvidia-sinks-7-stock-market-today/"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-25",
+    "session": "intraday",
+    "cat": "macro",
+    "title": "AI 融資疑慮引發盤中重挫",
+    "detail": "市場擔心 AI 基礎建設的舉債成本，道瓊盤中一度跌逾 1,100 點、Nasdaq-100 跌約 2.5%，輝達盤中重挫逾 7%；尾盤收復大部分跌幅，主要指數漲跌互見。",
+    "sources": [
+      {
+        "name": "CNBC",
+        "url": "https://www.cnbc.com/2026/11/24/stock-market-today-live-updates-.html"
+      },
+      {
+        "name": "ABC News",
+        "url": "https://abcnews.com/Business/stocks-tumble-tech-sell-off-resumes-nvidia-falls/story?id=138442070"
+      }
+    ]
   }
 ]
