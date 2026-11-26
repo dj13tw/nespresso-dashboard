@@ -260,7 +260,7 @@ def main():
         light, reason = judge(h, m, market_dd)
         rv, note = m.get("rev") or {}, m.get("note") or {}
         rows.append({
-            "code": h["code"], "name": h["name"], "market": h["market"], "kind": h["kind"],
+            "code": h["code"], "name": h["name"], "market": h["market"], "board": h.get("board"), "kind": h["kind"],
             "sector": h.get("sector", ""), "role": h.get("role", ""),
             "shares": h["shares"], "cost": round(h["cost"], 2), "price": price, "price_date": pdate, "currency": cur,
             "value_twd": round(value) if value else None, "cost_twd": round(cost),
@@ -277,7 +277,8 @@ def main():
             "news_source": note.get("source", ""), "news_tone": note.get("tone", ""),
         })
     rows.append({"code": "CASH", "name": "台股帳戶現金", "market": "TW", "kind": "cash", "sector": "現金", "role": "現金",
-                 "value_twd": round(acct["cash_twd"]), "cost_twd": round(acct["cash_twd"]), "light": "", "reason": ""})
+                 "value_twd": round(acct["cash_twd"]), "cost_twd": round(acct["cash_twd"]), "usd_twd": fx,
+                 "light": "", "reason": ""})
 
     own = open(__file__, encoding="utf-8").read()
     stamp = datetime.now(TPE).strftime("%Y-%m-%d %H:%M")
