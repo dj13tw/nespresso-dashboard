@@ -14,10 +14,11 @@ prices.json    上次輸出的價格歷史 {rows:[{code,date,close}]}，用來�
 notes.json     {"<code>": {"date","text","url","source","tone":"pos"|"neg"|"neutral"}}  人工整理的新聞摘要
 
 資料來源（皆為公開資料）：
-- 證交所 STOCK_DAY（上市個股、ETF 月成交）與 openapi STOCK_DAY_ALL（全部上市股票當日行情）
-- 櫃買中心 tradingStock（上櫃個股月成交）與 openapi tpex_mainboard_daily_close_quotes（上櫃當日行情）
-- 證交所 openapi t187ap05_L、櫃買中心 openapi mopsfin_t187ap05_O（月營收）
-證交所對短時間大量請求會暫時封鎖，所以請求之間間隔 8 秒；歷史資料只在不足時補抓一次。
+- FinMind 開放資料 TaiwanStockPrice：補抓歷史收盤價（一檔一個請求，只送股票代號）
+- 櫃買中心 tradingStock：上櫃個股月成交（FinMind 失敗時的備援）
+- 證交所 openapi STOCK_DAY_ALL、櫃買中心 openapi tpex_mainboard_daily_close_quotes：每日最新行情
+- 證交所 openapi t187ap05_L、櫃買中心 openapi mopsfin_t187ap05_O：月營收
+證交所對大量的個股歷史查詢會封鎖連線，所以不向證交所補抓歷史；請求之間間隔 8 秒。歷史資料只在不足時補抓一次。
 """
 import argparse
 import json
@@ -31,7 +32,6 @@ TPE = timezone(timedelta(hours=8))
 DELAY = 8
 KEEP = 260          # 每檔保留的交易日數（約一年）
 BACKFILL_MONTHS = 6  # 歷史不足 100 日時補抓的月數（足夠算 120 日均線）
-TWSE_BUDGET = 3      # 每次最多補抓幾檔上市股的歷史（每檔 6 個請求）
 _last = [0.0]
 
 
@@ -74,17 +74,25 @@ def month_starts(n):
 
 
 def history(code, board, out):
-    """補抓近幾個月的收盤價，寫進 out。中途失敗時，已抓到的月份會留在 out 裡，再把錯誤丟出。"""
-    for first in month_starts(BACKFILL_MONTHS):
-        if board == "上櫃":
-            d = get_json(f"https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?code={code}"
-                         f"&date={first:%Y}%2F{first:%m}%2F01&response=json")
-            rows = (d.get("tables") or [{}])[0].get("data", [])
-        else:
-            d = get_json(f"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?response=json"
-                         f"&date={first:%Y%m%d}&stockNo={code}")
-            rows = d.get("data", []) if d.get("stat") == "OK" else []
+    """補抓近幾個月的收盤價，寫進 out。先用 FinMind；上櫃股票失敗時改用櫃買中心。都失敗就丟出錯誤。"""
+    start = month_starts(BACKFILL_MONTHS)[0]
+    try:
+        d = get_json(f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id={code}"
+                     f"&start_date={start:%Y-%m-%d}")
+        rows = d.get("data") or []
         for r in rows:
+            if r.get("close"):
+                out[r["date"]] = float(r["close"])
+        if rows:
+            return out
+    except Exception as e:  # noqa: BLE001
+        print(f"  FinMind 失敗：{code}（{e}）", file=sys.stderr)
+    if board != "上櫃":
+        raise RuntimeError(f"{code} 沒有取得歷史資料")
+    for first in month_starts(BACKFILL_MONTHS):
+        d = get_json(f"https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?code={code}"
+                     f"&date={first:%Y}%2F{first:%m}%2F01&response=json")
+        for r in (d.get("tables") or [{}])[0].get("data", []):
             c = num(r[6])
             if c:
                 out[roc(r[0])] = c
@@ -201,24 +209,15 @@ def main():
             hist.setdefault(r["code"], {})[r["date"]] = r["close"]
 
     tw = [h for h in holdings if h["market"] == "TW"]
-    # 證交所的歷史一次補太多會被封鎖：每次最多補 TWSE_BUDGET 檔上市股，一遇到失敗就停，剩下的下次再補。
-    # 依投入成本由大到小，重要的持股先補。
-    twse_left, twse_blocked = (0, True) if a.no_backfill else (TWSE_BUDGET, False)
+    # 歷史不足 100 日的持股補抓一次（新上市的 ETF 本來就沒有那麼長的歷史，補到的就是全部）。
     for h in sorted(tw, key=lambda x: -x["cost"]):
-        if len(hist.get(h["code"], {})) >= 100:
-            continue
-        listed = h.get("board") != "上櫃"
-        if a.no_backfill or (listed and (twse_blocked or twse_left <= 0)):
+        if a.no_backfill or len(hist.get(h["code"], {})) >= 100:
             continue
         print(f"補抓歷史：{h['code']} {h['name']}…")
         try:
             history(h["code"], h.get("board"), hist.setdefault(h["code"], {}))
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ {h['code']} 歷史失敗：{e}", file=sys.stderr)
-            if listed:
-                twse_blocked = True
-        if listed:
-            twse_left -= 1
     print("當日行情…")
     for code, (d, c) in latest_quotes().items():
         if code in hist:
