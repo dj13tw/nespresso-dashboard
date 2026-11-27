@@ -7,7 +7,7 @@
 - 證交所 FMTQIK：每日加權指數收盤與漲跌（本月與上月）
 - 證交所 BFI82U：外資及陸資買賣超（最新一日，每天累積；另取本月累計）
 - 證交所 MI_MARGN：融資金額餘額（最新一日，每天累積）
-- 證交所 STOCK_DAY：台積電（2330）每日收盤
+- FinMind 開放資料（備援：證交所 STOCK_DAY）：台積電（2330）每日收盤
 - FRED（美國聖路易聯準銀行）：S&P 500、Nasdaq-100 每日收盤，用來和 CNN 恐懼貪婪指數對照
 
 期交所的資料不允許網頁跨網域讀取，所以由這支程式每天抓一次、存成檔案。
@@ -110,6 +110,17 @@ def taiex(months):
 
 
 def tsmc(months):
+    """台積電每日收盤。先用 FinMind 開放資料（一個請求）；失敗才向證交所逐月查詢，後者容易被封鎖。"""
+    start = month_starts(months)[0]
+    try:
+        d = get_json(f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=2330"
+                     f"&start_date={start:%Y-%m-%d}")
+        rows = {r["date"]: {"close": float(r["close"]), "change": float(r["spread"])}
+                for r in d.get("data") or [] if r.get("close")}
+        if rows:
+            return rows
+    except Exception as e:  # noqa: BLE001
+        print(f"  FinMind 台積電失敗：{e}", file=sys.stderr)
     rows = {}
     for first in month_starts(months):
         d = get_json(f"{TWSE}/afterTrading/STOCK_DAY?response=json&date={first:%Y%m%d}&stockNo=2330", twse=True)
@@ -176,7 +187,7 @@ def main():
     # 第一次執行時補足約 6 個月；之後只抓本月與上月
     months = lambda key: 2 if len(old.get(key, {})) >= 100 else 6  # noqa: E731
     tx = safe("證交所 加權指數", lambda: taiex(months("taiex")))
-    ts = safe("證交所 台積電", lambda: tsmc(months("tsmc")))
+    ts = safe("台積電", lambda: tsmc(months("tsmc")))
     fd = safe("證交所 外資買賣超", foreign_day)
     mg = safe("證交所 融資餘額", margin)
     sp = safe("FRED S&P 500", lambda: fred("SP500"))
